@@ -17,22 +17,34 @@ class Sample(Enum):
     """Enum of all valid CryoET Samples."""
 
     BACHD = "BACHD"
+    BACHD_Microtubules = "BACHD_Microtubules"
     dN17_BACHD = "dN17 BACHD"
     Q109 = "Q109"
+    Q109_Microtubules = "Q109_Microtubules"
     Q18 = "Q18"
+    Q18_Microtubules = "Q18_Microtubules"
     Q20 = "Q20"
     Q53 = "Q53"
     Q53_KD = "Q53 PIAS1"
     Q66 = "Q66"
     Q66_GRFS1 = "Q66 GRFS1"
     Q66_KD = "Q66 PIAS1"
-<<<<<<< HEAD
-    WT = "WT"
-    cancer = "Cancer"
-=======
     WT = "Wild Type"
-    # cancer = "Cancer"
->>>>>>> d8cd046 (updated CryoViT dataset from Sanket)
+    WT_Microtubules = "WT_Microtubules"
+    cancer = "Cancer"
+    AD = "AD"
+    AD_Abeta = "AD_Abeta"
+    Aged = "Aged"
+    Young = "Young"
+    RGC_CM = "RGC_CM"
+    RGC_control = "RGC_control"
+    RGC_naPP = "RGC_naPP"
+    RGC_PP = "RGC_PP"
+    CZI_Algae = "Algae"
+    CZI_Campy_C = "Campy_C"
+    CZI_Campy_CDel = "Campy_CDel"
+    CZI_Campy_F = "Campy_F"
+    
 
 
 samples = [sample.name for sample in Sample]
