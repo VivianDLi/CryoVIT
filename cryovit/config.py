@@ -26,8 +26,13 @@ class Sample(Enum):
     Q66 = "Q66"
     Q66_GRFS1 = "Q66 GRFS1"
     Q66_KD = "Q66 PIAS1"
+<<<<<<< HEAD
     WT = "WT"
     cancer = "Cancer"
+=======
+    WT = "Wild Type"
+    # cancer = "Cancer"
+>>>>>>> d8cd046 (updated CryoViT dataset from Sanket)
 
 
 samples = [sample.name for sample in Sample]

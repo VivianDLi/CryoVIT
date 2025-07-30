@@ -18,10 +18,10 @@ samples=(
     "Q66_GRFS1"
     "Q66_KD"
     "WT"
-    "cancer"
+    # "cancer"
 )
 
-max_jobs=24  # Maximum concurrent jobs
+max_jobs=1024  # Maximum concurrent jobs
 total_jobs=$(( ${#samples[@]} * 10 ))
 current_job=0
 
@@ -44,7 +44,7 @@ for sample in "${samples[@]}"; do
             --cpus-per-task=8 \
             --mem-per-cpu=6gb \
             --gres=gpu:a100:1 \
-            --time=00:30:00 \
+            --time=01:00:00 \
             --wrap="$exp_cmd"
 
         ((current_job++))

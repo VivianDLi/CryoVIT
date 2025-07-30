@@ -2,13 +2,18 @@ data/*
 debug/*
 experiments/*
 cryovit_dataset/*
+no_cancer/*
+
 slurm_scripts/outputs/*
+slurm_scripts/nc_outputs/*
+
 wandb/
 
 cryovit/data_proc/*
 cryovit/eval/images/*
 
 .vscode
+*.code-workspace
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

@@ -10,7 +10,7 @@ callbacks:
 logger:
 - _target_: pytorch_lightning.loggers.wandb.WandbLogger
   _convert_: all
-  project: cryovit
+  project: no_cancer
   group: ${exp_name}
   save_dir: ${exp_paths.exp_dir}
   # mode: "disabled"

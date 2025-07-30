@@ -18,12 +18,14 @@ samples=(
     "Q66_GRFS1"
     "Q66_KD"
     "WT"
-    "cancer"
+
+    # "cancer"
 )
 
-max_jobs=24  # Maximum concurrent jobs
+max_jobs=1024  # Maximum concurrent jobs
 total_jobs=$(( ${#samples[@]} * 10 ))
 current_job=0
+split_id=10
 
 for sample in "${samples[@]}"; do
     for split_id in {1..10}; do
@@ -33,8 +35,8 @@ for sample in "${samples[@]}"; do
         done
 
         exp_cmd="$(dirname "$0")/fractional_sample_job.sh $sample $split_id $1 $2"
-        job_name="single_sample_${sample}_${split_id}_${1}_${2}"
-        out_dir="$(dirname "$0")/outputs"
+        job_name="fractional_sample_${sample}_${split_id}_${1}_${2}"
+        out_dir="$(dirname "$0")/nc_outputs"
 
         sbatch \
             --partition="cryoem" \
@@ -44,7 +46,7 @@ for sample in "${samples[@]}"; do
             --cpus-per-task=8 \
             --mem-per-cpu=6gb \
             --gres=gpu:a100:1 \
-            --time=02:00:00 \
+            --time=02:30:00 \
             --wrap="$exp_cmd"
 
         ((current_job++))

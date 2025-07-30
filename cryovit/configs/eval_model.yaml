@@ -2,7 +2,7 @@ label_key: mito
 
 exp_paths:
   cryovit_root: /sdf/home/s/sanketg/projects/CryoVIT
-  exp_dir: ${.cryovit_root}/experiments/${exp_name}
+  exp_dir: ${.cryovit_root}/no_cancer/${exp_name}
   tomo_dir: ${.cryovit_root}/cryovit_dataset/dino_features
   split_file: ${.cryovit_root}/cryovit_dataset/csv/splits.csv
 
@@ -32,8 +32,8 @@ hydra:
         Q66,
         Q66_GRFS1,
         Q66_KD,
-        WT,
-        cancer
+        WT
+        # cancer
   sweep:
     dir: /tmp/${oc.env:USER}/multirun
 

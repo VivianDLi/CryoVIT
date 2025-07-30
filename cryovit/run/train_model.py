@@ -126,7 +126,7 @@ def run_trainer(cfg: TrainModelConfig) -> None:
     trainer.fit(
         model,
         train_dataloaders=datamodule.train_dataloader(),
-        val_dataloaders=datamodule.test_dataloader(),
+        # val_dataloaders=datamodule.test_dataloader(),
     )
 
     torch.save(model.state_dict(), (exp_paths.exp_dir / "weights.pt"))
