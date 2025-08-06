@@ -1,0 +1,7 @@
+max_epochs: 1
+enable_model_summary: False
+
+#### DO NOT CHANGE ####
+defaults:
+  - base_trainer
+  - _self_

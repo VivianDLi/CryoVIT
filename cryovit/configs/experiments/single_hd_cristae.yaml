@@ -1,0 +1,30 @@
+# @package _global_
+defaults:
+  - override /datamodule: single
+
+name: single_hd_cristae
+label_key: cristae
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule.sample:
+        Q18,
+        Q53
+      datamodule.split_id:
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+      model:
+        cryovit,
+        unet3d
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun

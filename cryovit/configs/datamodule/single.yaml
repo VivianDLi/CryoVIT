@@ -1,0 +1,9 @@
+_target_: cryovit.datamodules.SingleSampleDataModule
+
+#### DO NOT MODIFY ####
+
+defaults:
+  - dataset: tomo
+  - dataloader: default
+  - base_datamodule
+  - _self_

@@ -1,33 +1,18 @@
-# Root directory for the CryoVIT package
-cryovit_root: /sdf/home/s/sanketg/projects/CryoVIT
-
 # Path to the DINOv2 foundation model
-dino_dir: /sdf/home/s/sanketg/projects/foundation_models
+dino_dir: ${paths.project_dir}/${paths.dino_name}
 
-# Directory containing tomograms and CSV files
-data_dir: ${cryovit_root}/cryovit_dataset
+# Sample to vectorize using DINOv2 (all samples)
+sample: null
 
-# Destination to save the generated DINOv2 features
-feature_dir: ${data_dir}/dino_features
-
-# Batch size: number of slices in one batch
-batch_size: 128
-
-# Sample to vectorize using DINOv2
-sample: ???
+# Export DINOv2 features with PCA
+export_features: True
 
 #################### Do not modify #####################
 
 defaults:
+  - paths: default
+  - datamodule: dino
   - dino_features_config
   - _self_
   - override hydra/hydra_logging: rich_logger
   - override hydra/job_logging: rich_logger
-
-hydra:
-  mode: MULTIRUN
-  sweeper:
-    params:
-      sample: ${all_samples}
-  sweep:
-    dir: /tmp/${oc.env:USER}/multirun

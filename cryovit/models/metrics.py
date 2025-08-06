@@ -17,6 +17,7 @@ class DiceMetric(Metric):
             threshold (float): The threshold to apply to the predictions during Dice score calculation.
         """
         super().__init__()
+        self.name = "DiceMetric"
         self.thresh = threshold
         self.add_state("dice_score", default=torch.tensor(0.0), dist_reduce_fx="sum")
         self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")

@@ -1,0 +1,2 @@
+_target_: cryovit.models.callbacks.CsvWriter
+csv_result_path: ${paths.exp_dir}/${name}.csv

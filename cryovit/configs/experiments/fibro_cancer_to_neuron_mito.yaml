@@ -1,0 +1,20 @@
+# @package _global_
+defaults:
+  - override /model: cryovit
+  - override /datamodule: multi
+
+name: fibro_cancer_to_neuron_mito
+label_key: mito
+
+datamodule:
+  sample:
+    - AD
+    - AD_Abeta
+    - Aged
+    - Young
+    - cancer
+  test_sample:
+    - RGC_CM
+    - RGC_control
+    - RGC_naPP
+    - RGC_PP

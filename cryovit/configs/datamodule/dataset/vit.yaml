@@ -1,0 +1,4 @@
+_target_: cryovit.datasets.VITDataset
+_partial_: True
+
+data_root: ${paths.data_dir}/${paths.tomo_name}

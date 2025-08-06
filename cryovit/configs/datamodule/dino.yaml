@@ -1,0 +1,10 @@
+_partial_: True
+dataloader:
+  num_workers: 0
+
+#### DO NOT MODIFY ####
+
+defaults:
+  - dataset: vit
+  - dataloader: default
+  - _self_

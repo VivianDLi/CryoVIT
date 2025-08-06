@@ -1,0 +1,31 @@
+# @package _global_
+defaults:
+  - override /datamodule: single
+
+name: single_campy_bacteria
+label_key: bacteria
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule.sample:
+        CZI_Campy_C,
+        CZI_Campy_CDel,
+        CZI_Campy_F
+      datamodule.split_id:
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+      model:
+        cryovit,
+        unet3d
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun

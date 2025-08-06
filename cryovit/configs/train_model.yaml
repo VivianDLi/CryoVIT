@@ -1,24 +1,20 @@
-label_key: mito
-
-exp_paths:
-  cryovit_root: /sdf/home/s/sanketg/projects/CryoVIT
-  exp_dir: ${.cryovit_root}/no_cancer/${exp_name}
-  tomo_dir: ${.cryovit_root}/cryovit_dataset/dino_features
-  split_file: ${.cryovit_root}/cryovit_dataset/csv/splits.csv
+name: ???
+label_key: ???
+random_seed: 42
 
 #################### Do not modify #####################
 
 defaults:
+  - paths: default
   - model: ???
-  - dataset: ???
-  - trainer: trainer_fit
-  - train_model_config
+  - trainer: fit
+  - callbacks:
+    - rich_progress_bar
+    - stochastic_weight_average
+  - logger:
+    - wandb
+  - datamodule: ???
+  - base_experiment_config
   - _self_
   - override hydra/hydra_logging: rich_logger
   - override hydra/job_logging: rich_logger
-
-hydra:
-  mode: MULTIRUN
-  sweep:
-    dir: /tmp/${oc.env:USER}/multirun
-

@@ -1,0 +1,19 @@
+# @package _global_
+defaults:
+  - override /model: cryovit
+  - override /datamodule: multi
+
+name: healthy_to_hd_mito
+label_key: mito
+
+datamodule:
+  sample:
+    - Q18
+    - Q20
+    - WT
+  test_sample:
+    - Q109
+    - Q53
+    - Q66
+    - BACHD
+    - dN17_BACHD

@@ -12,6 +12,7 @@ class DiceLoss(nn.Module):
     def __init__(self) -> None:
         """Initializes the DiceLoss instance."""
         super().__init__()
+        self.name = "DiceLoss"
 
     def forward(self, y_pred: Tensor, y_true: Tensor) -> Tensor:
         """Computes the Dice loss between predictions and true values.
@@ -42,6 +43,7 @@ class FocalLoss(nn.Module):
         """
         super().__init__()
         self.gamma = gamma
+        self.name = "FocalLoss"
 
     def forward(self, y_pred: Tensor, y_true: Tensor) -> Tensor:
         """Computes the Focal loss between predictions and true values.

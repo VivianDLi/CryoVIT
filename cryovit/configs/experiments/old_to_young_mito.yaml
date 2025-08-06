@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - override /model: cryovit
+  - override /datamodule: multi
+
+name: old_to_young_mito
+label_key: mito
+
+datamodule:
+  sample:
+    - Aged
+  test_sample:
+    - Young

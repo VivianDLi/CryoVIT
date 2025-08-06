@@ -1,28 +1,25 @@
 """Config file for CryoVIT experiments."""
 
 from dataclasses import dataclass
-from dataclasses import field
 from enum import Enum
 from pathlib import Path
-from typing import Dict
-from typing import List
-from typing import Optional
-from typing import Tuple
+from typing import Any, Dict, List, Tuple, Optional
+import logging
+import sys
 
 from hydra.core.config_store import ConfigStore
-from omegaconf import MISSING
-
+from omegaconf import OmegaConf, MISSING
 
 class Sample(Enum):
     """Enum of all valid CryoET Samples."""
 
     BACHD = "BACHD"
-    BACHD_Microtubules = "BACHD_Microtubules"
+    BACHD_Microtubules = "BACHD Microtubules"
     dN17_BACHD = "dN17 BACHD"
     Q109 = "Q109"
-    Q109_Microtubules = "Q109_Microtubules"
+    Q109_Microtubules = "Q109 Microtubules"
     Q18 = "Q18"
-    Q18_Microtubules = "Q18_Microtubules"
+    Q18_Microtubules = "Q18 Microtubules"
     Q20 = "Q20"
     Q53 = "Q53"
     Q53_KD = "Q53 PIAS1"
@@ -30,328 +27,254 @@ class Sample(Enum):
     Q66_GRFS1 = "Q66 GRFS1"
     Q66_KD = "Q66 PIAS1"
     WT = "Wild Type"
-    WT_Microtubules = "WT_Microtubules"
+    WT_Microtubules = "Wild Type Microtubules"
     cancer = "Cancer"
     AD = "AD"
-    AD_Abeta = "AD_Abeta"
+    AD_Abeta = "AD Abeta"
     Aged = "Aged"
     Young = "Young"
-    RGC_CM = "RGC_CM"
-    RGC_control = "RGC_control"
-    RGC_naPP = "RGC_naPP"
-    RGC_PP = "RGC_PP"
+    RGC_CM = "RGC CM"
+    RGC_control = "RGC Control"
+    RGC_naPP = "RGC naPP"
+    RGC_PP = "RGC PP"
     CZI_Algae = "Algae"
-    CZI_Campy_C = "Campy_C"
-    CZI_Campy_CDel = "Campy_CDel"
-    CZI_Campy_F = "Campy_F"
+    CZI_Campy_C = "Campy C"
+    CZI_Campy_CDel = "Campy C-Deletion"
+    CZI_Campy_F = "Campy F"
     
 
-
-samples = [sample.name for sample in Sample]
-
-
-@dataclass
-class DinoFeaturesConfig:
-    """Configuration for managing Dino features within CryoVIT experiments.
-
-    Attributes:
-        dino_dir (Path): Path to the DINOv2 foundation model.
-        data_dir (Path): Directory containing tomograms and CSV files.
-        feature_dir (Path): Destination to save the generated DINOv2 features.
-        batch_size (int): Batch size: number of slices in one batch.
-        sample (Sample): Enum representing a specific sample under study.
-        all_samples (str): Comma-separated string of all sample names.
-        cryovit_root (Optional[Path]): Root directory for the CryoVIT package.
-    """
-
-    dino_dir: Path
-    data_dir: Path
-    feature_dir: Path
-    batch_size: int
-    sample: Sample
-    all_samples: str = ",".join(samples)
-    cryovit_root: Optional[Path] = None
+samples: List[str] = [sample.name for sample in Sample]
+tomogram_exts: List[str] = [".hdf", ".mrc"]
 
 
 @dataclass
-class Model:
+class BaseModel:
     """Base class for model configurations used in CryoVIT experiments.
 
     Attributes:
+        input_key (str): Key to get the input data from a tomogram.
         lr (float): Learning rate for the model training.
         weight_decay (float): Weight decay (L2 penalty) rate. Default is 1e-3.
         losses (Tuple[Dict]): Configuration for loss functions used in training.
         metrics (Tuple[Dict]): Configuration for metrics used during model evaluation.
     """
 
-    lr: float
+    _target_: str = MISSING
+
+    name: str = MISSING
+    input_key: str = MISSING
+    lr: float = MISSING
     weight_decay: float = 1e-3
-    losses: Tuple[Dict] = (dict(_target_="cryovit.models.losses.DiceLoss"),)
+    losses: Tuple[Dict] = (
+        dict(
+            _target_="cryovit.models.losses.DiceLoss",
+            name="DiceLoss"
+        ),
+    )
     metrics: Tuple[Dict] = (
-        dict(_target_="cryovit.models.metrics.DiceMetric", threshold=0.5),
+        dict(
+            _target_="cryovit.models.metrics.DiceMetric",
+            name="DiceMetric",
+            threshold=0.5
+        ),
     )
 
 
 @dataclass
-class CryoVIT(Model):
-    """Configuration for the CryoVIT model.
-
-    Attributes:
-        lr (float): Learning rate for the CryoVIT model, default set to 1e-4.
-        _target_ (str): Class identifier for instantiating a CryoVIT model.
-    """
-
-    lr: float = 1e-4
-    _target_: str = "cryovit.models.CryoVIT"
-
-
-@dataclass
-class UNet3D(Model):
-    """Configuration for the UNet3D model.
-
-    Attributes:
-        lr (float): Learning rate for the UNet3D model, default set to 3e-3.
-        _target_ (str): Class identifier for instantiating a UNet3D model.
-    """
-
-    lr: float = 3e-3
-    _target_: str = "cryovit.models.UNet3D"
-
-
-@dataclass
-class Trainer:
+class BaseTrainer:
     """Base class for trainer configurations used in CryoVIT experiments.
 
     Attributes:
         accelerator (str): Type of hardware acceleration ('gpu' for this configuration).
         devices (str): Number of devices to use for training.
         precision (str): Precision configuration for training (e.g., '16-mixed').
-        callbacks (Optional[List]): List of callback functions for training sessions.
+        max_epochs (Optional[int]): The maximum number of epochs to train for.
         enable_checkpointing (bool): Flag to enable or disable model checkpointing.
-        _target_ (str): Class identifier for instantiating a Trainer object.
+        enable_model_summary (bool): Enable model summarization.
     """
 
+    _target_: str = "pytorch_lightning.Trainer"
+    
     accelerator: str = "gpu"
     devices: str = 1
     precision: str = "16-mixed"
-    callbacks: Optional[List] = None
+    max_epochs: Optional[int] = None
     enable_checkpointing: bool = False
-    _target_: str = "pytorch_lightning.Trainer"
+    enable_model_summary: bool = True
 
 
 @dataclass
-class TrainerFit(Trainer):
-    """Specific configuration for fitting (training) models in CryoVIT experiments.
-
-    Attributes:
-        max_epochs (int): Maximum number of training epochs.
-        logger (Optional[List]): Logging configuration for training process.
-        log_every_n_steps (int): Interval of logging within the training process.
-        num_sanity_val_steps (int): Number of validation steps to perform at start for sanity check.
-    """
-
-    max_epochs: int = 50
-    logger: Optional[List] = None
-
-    log_every_n_steps: int = 1
-    num_sanity_val_steps: int = 0
-
-
-@dataclass
-class TrainerEval(Trainer):
-    """Configuration for model evaluation in CryoVIT experiments.
-
-    Attributes:
-        logger (bool): Flag to enable or disable logging during evaluation.
-        enable_model_summary (bool): Flag to enable or disable generation of model summaries.
-    """
-
-    logger: bool = False
-    enable_model_summary: bool = False
-
-
-@dataclass
-class Dataset:
+class BaseDataModule:
     """Base class for dataset configurations in CryoVIT experiments.
 
     Attributes:
-        _partial_ (bool): Flag to indicate this is a partial configuration.
+        sample (Union[Sample, Tuple[Sample]]): Specific sample or samples used for training.
+        split_id (Optional[int]): Optional split_id to use for validation.
+        test_sample (Union[Sample, Tuple[Sample]]): Specific sample or samples used for testing.
+        dataset (Dict): Configuration options for the dataset.
+        dataloader (Dict): Configuration options for the dataloader.
     """
 
+    _target_: str = MISSING
     _partial_: bool = True
 
-
-@dataclass
-class SingleSample(Dataset):
-    """Configuration for a dataset involving a single sample in CryoVIT experiments.
-
-    Attributes:
-        split_id (Optional[int]): Optional split ID to be excluded from training and used for eval.
-        sample (Sample): Specific sample used in this dataset configuration.
-        _target_ (str): Class identifier for instantiating this dataset.
-    """
-
+    # OmegaConf doesn't support Union[Sample, Tuple[Sample]] yet, so moved type-checking to config validation instead
+    sample: Any = MISSING
     split_id: Optional[int] = None
-    sample: Sample = MISSING
-    _target_: str = "cryovit.data_modules.SingleSampleDataModule"
+    split_key: Optional[str] = "split_id"
+    test_sample: Optional[Any] = None
+    
+    dataset: Dict = MISSING
+    dataloader: Dict = MISSING
 
 
 @dataclass
-class MultiSample(Dataset):
-    """Configuration for a dataset involving multiple samples in CryoVIT experiments.
-
-    Attributes:
-        split_id (Optional[int]): Optional split ID for validation.
-        sample (Tuple[Sample]): Tuple of samples used for training.
-        test_samples (Tuple[Sample]): Tuple of samples used for testing.
-        _target_ (str): Class identifier for instantiating this dataset.
-    """
-
-    split_id: Optional[int] = None
-    sample: Tuple[Sample] = MISSING
-    test_samples: Tuple[Sample] = ()
-    _target_: str = "cryovit.data_modules.MultiSampleDataModule"
-
-
-@dataclass
-class LOOSample(Dataset):
-    """Leave-One-Out (LOO) dataset configuration for CryoVIT experiments.
-
-    Attributes:
-        split_id (Optional[int]): Optional split ID for validation.
-        sample (Sample): Sample excluded from training (used for testing).
-        all_samples (Tuple[Sample]): Tuple of all samples, including the LOO sample.
-        _target_ (str): Class identifier for instantiating this dataset.
-    """
-
-    split_id: Optional[int] = None
-    sample: Sample = MISSING
-    all_samples: Tuple[Sample] = tuple(s for s in Sample)
-    _target_: str = "cryovit.data_modules.LOOSampleDataModule"
-
-
-@dataclass
-class FractionalLOO(Dataset):
-    """Fractional Leave-One-Out (LOO) dataset configuration in CryoVIT experiments.
-
-    Attributes:
-        split_id (int): Number of splits to be used for training.
-        sample (Sample): Sample excluded from training (used for testing).
-        all_samples (Tuple[Sample]): Tuple of all samples, including the LOO sample.
-        _target_ (str): Class identifier for instantiating this dataset.
-    """
-
-    split_id: int = MISSING
-    sample: Sample = MISSING
-    all_samples: Tuple[Sample] = tuple(s for s in Sample)
-    _target_: str = "cryovit.data_modules.FractionalSampleDataModule"
-
-
-@dataclass
-class ExpPaths:
+class ExperimentPaths:
     """Configuration for managing experiment paths in CryoVIT experiments.
 
     Attributes:
+        project_dir (Path): Directory path for code projects.
+        data_dir (Path): Directory path for tomogram data and .csv files.
         exp_dir (Path): Directory path for saving results from an experiment.
-        tomo_dir (Path): Directory path for tomograms with their DINOv2 features.
-        split_file (Path): Path to the CSV file specifying data splits.
-        cryovit_root (Optional[Path]): Root directory for the CryoVIT package.
+        tomo_name (str): Name of the directory in data_dir with tomograms.
+        feature_name (str): Name of the directory in data_dir with DINOv2 features.
+        dino_name (str): Name of the directory in project_dir to save DINOv2 model.
+        csv_name (str): Name of the directory in data_dir with .csv files.
+        split_name(str): Name of the .csv file with training splits.
     """
-
-    exp_dir: Path
-    tomo_dir: Path
-    split_file: Path
-    cryovit_root: Optional[Path] = None
+    project_dir: Path = MISSING
+    data_dir: Path = MISSING
+    exp_dir: Path = MISSING
+    
+    tomo_name: str = "tomo_annot"
+    feature_name: str = "dino_features"
+    dino_name: str = "foundation_models"
+    csv_name: str = "csv"
+    split_name: str = "splits.csv"
 
 
 @dataclass
-class DataLoader:
-    """Configuration for data loader settings used in CryoVIT experiments.
+class DinoFeaturesConfig:
+    """Configuration for managing DINOv2 features within CryoVIT experiments.
 
     Attributes:
-        num_workers (int): Number of worker processes for loading data.
-        prefetch_factor (Optional[int]): Number of batches to prefetch (default is 1).
-        persistent_workers (bool): If True, the data loader will not shutdown workers between epochs.
-        pin_memory (bool): If True, enables memory pinning for faster data transfer to GPU.
-        batch_size (Optional[int]): Number of samples per batch, can be unspecified for default.
-        _target_ (str): Class identifier for instantiating the data loader.
-        _partial_ (bool): Flag to indicate this is a partial configuration.
+        batch_size (int): Number of tomogram slices to process as one batch.
+        dino_dir (Path): Path to the DINOv2 foundation model.
+        envs (Path): Path to the directory containing tomograms.
+        csv_dir (Optional[Path]): Path to the directory containing .csv files.
+        feature_dir (Path): Destination to save the generated DINOv2 features.
+        sample (Optional[Sample]): Sample to calculate features for. None means to calculate features for all samples.
+        export_features (bool): Whether to additionally save calculated features as PCA color-maps for investigation.
     """
-
-    num_workers: int = 8
-    prefetch_factor: Optional[int] = 1
-    persistent_workers: bool = False
-    pin_memory: bool = True
-    batch_size: Optional[int] = None
-    _target_: str = "torch.utils.data.DataLoader"
-    _partial_: bool = True
+    batch_size: int = 128
+    dino_dir: Path = MISSING
+    paths: ExperimentPaths = MISSING
+    datamodule: BaseDataModule = MISSING
+    sample: Optional[Sample] = MISSING
+    export_features: bool = False
 
 
 @dataclass
-class TrainModelConfig:
-    """Configuration for training a model in CryoVIT experiments.
-
+class BaseExperimentConfig:
+    """Base configuration for running experiment scripts.
+    
     Attributes:
-        exp_name (str): The name of the experiment, must be unique for each configuration.
-        label_key (str): Key used to specify the training label: mito or mito_ai.
-        aux_keys (Tuple[str]): Additional keys to load auxiliary data from tomograms.
-        model (Model): The model configuration to be used for training.
-        trainer (TrainerFit): Trainer configuration tailored for training sessions.
-        dataset (Dataset): Dataset configuration to be used for model training.
-        exp_paths (ExpPaths): Configuration paths relevant to the experiment.
-        dataloader (DataLoader): DataLoader configuration for handling input data efficiently.
+        name (str): Name of the experiment, must be unique for each configuration.
+        label_key (str): Key used to specify the training label.
+        additional_keys (Tuple[str]): Additional keys to load auxiliary data from tomograms.
+        random_seed (int): Random seed set for reproducibility.
+        paths (ExperimentPaths): Configuration paths relevant to the experiment.
+        model (BaseModel): Model configuration to use for the experiment.
+        trainer (BaseTrainer): Trainer configuration to use for the experiment.
+        callbacks (Optional[List]): List of callback functions for training sessions.
+        logger (Optional[List]): List of logging functions for training sessions.
+        dataset (BaseDataset): Dataset configuration to use for the experiment.
     """
-
-    exp_name: str = MISSING
+    
+    name: str = MISSING
     label_key: str = MISSING
-    aux_keys: Tuple[str] = ()
-
-    model: Model = MISSING
-    trainer: TrainerFit = MISSING
-    dataset: Dataset = MISSING
-    exp_paths: ExpPaths = MISSING
-    dataloader: DataLoader = field(default=DataLoader())
-
-
-@dataclass
-class EvalModelConfig:
-    """Configuration for evaluating a model in CryoVIT experiments.
-
-    Attributes:
-        exp_name (str): The name of the experiment, must be unique for each configuration.
-        label_key (str): Key used to specify the training label: mito or mito_ai.
-        aux_keys (Tuple[str]): Additional keys to load auxiliary data from tomograms.
-        model (Model): The model configuration to be used for evaluation.
-        trainer (TrainerEval): Trainer configuration specifically designed for evaluation sessions.
-        dataset (Dataset): Dataset configuration intended for model evaluation.
-        exp_paths (ExpPaths): Configuration paths relevant to the experiment.
-        dataloader (DataLoader): DataLoader configuration optimized for evaluation scenarios.
-    """
-
-    exp_name: str = MISSING
-    label_key: str = MISSING
-    aux_keys: Tuple[str] = ("data",)
-
-    model: Model = MISSING
-    trainer: TrainerEval = MISSING
-    dataset: Dataset = MISSING
-    exp_paths: ExpPaths = MISSING
-    dataloader: DataLoader = field(default=DataLoader())
-
+    additional_keys: Tuple[str] = ()
+    random_seed: int = 42
+    paths: ExperimentPaths = MISSING
+    model: BaseModel = MISSING
+    trainer: BaseTrainer = MISSING
+    callbacks: Optional[List] = None
+    logger: Optional[List] = None
+    datamodule: BaseDataModule = MISSING
+    ckpt_path: Optional[Path] = None
 
 cs = ConfigStore.instance()
+
+cs.store(group="model", name="base_model", node=BaseModel)
+cs.store(group="trainer", name="base_trainer", node=BaseTrainer)
+cs.store(group="datamodule", name="base_datamodule", node=BaseDataModule)
+cs.store(group="paths", name="base_env", node=ExperimentPaths)
+
 cs.store(name="dino_features_config", node=DinoFeaturesConfig)
+cs.store(name="base_experiment_config", node=BaseExperimentConfig)
 
-cs.store(group="model", name="cryovit", node=CryoVIT)
-cs.store(group="model", name="unet3d", node=UNet3D)
+#### Utility Functions for Configs ####\
 
-cs.store(group="trainer", name="trainer_fit", node=TrainerFit)
-cs.store(group="trainer", name="trainer_eval", node=TrainerEval)
+def validate_dino_config(cfg: DinoFeaturesConfig) -> None:
+    """Validates the configuration for DINOv2 feature extraction.
 
-cs.store(group="dataset", name="single", node=SingleSample)
-cs.store(group="dataset", name="multi", node=MultiSample)
-cs.store(group="dataset", name="loo", node=LOOSample)
-cs.store(group="dataset", name="fractional", node=FractionalLOO)
+    Checks if all necessary parameters are present in the configuration. If any required parameters are
+    missing, it logs an error message and exits the script.
 
-cs.store(name="train_model_config", node=TrainModelConfig)
-cs.store(name="eval_model_config", node=EvalModelConfig)
+    Args:
+        cfg (DinoFeaturesConfig): The configuration object containing settings for feature extraction.
+
+    Raises:
+        SystemExit: If any configuration parameters are missing.
+    """
+    missing_keys = OmegaConf.missing_keys(cfg)
+    error_msg = ["The following parameters were missing from dino_features.yaml"]
+
+    for i, key in enumerate(missing_keys, 1):
+        param_dict = DinoFeaturesConfig.__annotations__
+        error_str = f"{i}. {key}: {param_dict.get(key, Any).__name__}"
+        error_msg.append(error_str)
+
+    if missing_keys:
+        logging.error("\n".join(error_msg))
+        sys.exit(1)
+
+def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
+    """Validates an experiment configuration.
+    
+    Checks if all necessary parameters are present in the configuration. Logs an error and exits if any required parameters are missing.
+    
+    Also checks that all Samples specified are valid, and logs an error and exits if any samples are not valid.
+    
+    Args:
+        cfg (BaseExperimentConfig): The configuration object to validate.
+        
+    Raises:
+        SystemExit: If any configuration parameters are missing, or any samples are not valid, terminating the script."""
+    missing_keys = OmegaConf.missing_keys(cfg)
+    error_msg = ["The following parameters were missing from train_model.yaml:"]
+
+    for i, key in enumerate(missing_keys, 1):
+        error_msg.append(f"{i}. {key}")
+
+    if missing_keys:
+        logging.error("\n".join(error_msg))
+        sys.exit(1)
+        
+    # Check datamodule samples are valid
+    error_msg = ["The following datamodule parameters are not valid samples:"]
+    invalid_samples = []
+    if isinstance(cfg.datamodule.sample, str):
+        cfg.datamodule.sample = [cfg.datamodule.sample]
+    for sample in cfg.datamodule.sample:
+        if sample not in samples:
+            invalid_samples.append(sample)
+    
+    for i, sample in enumerate(invalid_samples, 1):
+        error_msg.append(f"{i}. {sample}")
+    
+    if invalid_samples:
+        logging.error("\n".join(error_msg))
+        sys.exit(1)
+
+    OmegaConf.set_struct(cfg, False)

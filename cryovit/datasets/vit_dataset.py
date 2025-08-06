@@ -1,6 +1,7 @@
 """Dataset class for loading tomograms for DINOv2 models."""
 
 from pathlib import Path
+from typing import List
 
 import h5py
 import numpy as np
@@ -19,15 +20,15 @@ IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 class VITDataset(Dataset):
     """Dataset class for Vision Transformer models, loading and processing tomograms."""
 
-    def __init__(self, records: pd.Series, root: Path) -> None:
+    def __init__(self, data_root: Path, records: List[str]) -> None:
         """Initializes a dataset object to load tomograms, applying normalization and resizing for DINOv2 models.
 
         Args:
-            records (pd.Series): A series containing paths to tomogram files.
             root (Path): Root directory where tomogram files are stored.
+            records (List[str]): A list of strings representing paths to tomogram files in the root directory.
         """
+        self.root = data_root
         self.records = records
-        self.root = root
         self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
 
     def __len__(self) -> int:
@@ -80,9 +81,9 @@ class VITDataset(Dataset):
         _, h, w = data.shape
         assert h % 16 == 0 and w % 16 == 0, f"Invalid height: {h} or width: {w}"
 
-        data = np.expand_dims(data, axis=1)
+        data = np.expand_dims(data, axis=1) # D, C, H, W (i.e., B, C, H, W)
         data = np.repeat(data, 3, axis=1)
 
-        data = torch.from_numpy(data).float()
+        data = torch.from_numpy(data).float() # data expected to be uint8, [0-255]
         data = self.transform(data / 255.0)
         return F.interpolate(data, scale_factor=scale, mode="bicubic")
