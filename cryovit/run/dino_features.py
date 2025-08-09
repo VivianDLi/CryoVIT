@@ -1,7 +1,7 @@
 """Script for extracting DINOv2 features from tomograms."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional, Union
 
 from hydra.utils import instantiate
 import h5py
@@ -18,7 +18,7 @@ from numpy.typing import NDArray
 from rich.progress import track
 
 from cryovit.config import DinoFeaturesConfig, BaseDataModule, samples, tomogram_exts
-
+from cryovit.types import DinoFeaturesData, FloatTomogramData, IntTomogramData, LabelData
 
 torch.set_float32_matmul_precision("high")  # ensures tensor cores are used
 dino_model = ("facebookresearch/dinov2", "dinov2_vitg14")  # the giant variant of DINOv2
@@ -28,7 +28,7 @@ def _dino_features(
     data: torch.Tensor,
     model: torch.nn.Module,
     batch_size: int,
-) -> NDArray[np.float16]:
+) -> DinoFeaturesData:
     """Extract patch features from a tomogram using a DINOv2 model.
 
     Args:
@@ -40,7 +40,7 @@ def _dino_features(
         NDArray[np.float16]: A numpy array containing the extracted features in reduced precision.
     """
     data = data.cuda()
-    w, h = np.array(data.shape[2:]) // 14  # the number of patches extracted per slice
+    w, h = np.array(data.shape[-2:]) // 14  # the number of patches extracted per slice
     all_features = []
 
     for i in range(0, len(data), batch_size):
@@ -57,14 +57,15 @@ def _dino_features(
     return np.concatenate(all_features, axis=1)
 
 def _save_data(
-    data: NDArray[np.float32],
-    features: NDArray[np.float16],
+    data: Dict[str, Union[IntTomogramData, LabelData]],
+    features: IntTomogramData,
     tomo_name: str,
     dst_dir: Path,
 ) -> None:
     """Save extracted features to a specified directory, and copy the source tomogram file.
 
     Args:
+        data (Dict[str, NDArray]): A dictionary containing tomogram data and labels.
         features (NDArray[np.float16]): Extracted features to be saved.
         tomo_name (str): The name of the tomogram file.
         src_dir (Path): The source directory containing the original tomogram file.
@@ -72,11 +73,17 @@ def _save_data(
     """
     dst_dir.mkdir(parents=True, exist_ok=True)
 
-    with h5py.File(dst_dir / tomo_name, "r+") as fh:
-        fh.create_dataset("data", data=data)
-        fh.create_dataset("dino_features", data=features)  # save the features
+    with h5py.File(dst_dir / tomo_name, "w") as fh:
+        fh.create_group("labels")
+        for key in data:
+            if key != "data":
+                fh["labels"].create_dataset(key, data=data[key], shape=data[key].shape, dtype=data[key].dtype, compression="gzip")
+            else:
+                fh.create_dataset("data", data=data[key], shape=data[key].shape, dtype=data[key].dtype, compression="gzip")
+        fh.create_dataset("dino_features", data=features, shape=features.shape, dtype=features.dtype)
+        
 
-def _calculate_pca(features: NDArray[np.float16]) -> NDArray:
+def _calculate_pca(features: DinoFeaturesData) -> FloatTomogramData:
     features = features.astype(np.float32) # PCA expects float32
     x = features.transpose((1, 2, 3, 0))
     x = x.reshape((-1, x.shape[-1])) # N, C
@@ -94,7 +101,7 @@ def _calculate_pca(features: NDArray[np.float16]) -> NDArray:
     features = umap.transform(features)
     return features.reshape(D, W, H, 3)
 
-def _color_features(features: NDArray, alpha: float = 0.0):
+def _color_features(features: FloatTomogramData, alpha: float = 0.0) -> IntTomogramData:
     # Normalize
     features = features - features.min(axis=(0, 1, 2))
     features = features / features.max(axis= (0, 1, 2))
@@ -113,8 +120,8 @@ def _color_features(features: NDArray, alpha: float = 0.0):
     return rgb
 
 def _export_pca(
-    data: NDArray[np.float32],
-    features: NDArray[np.float32],
+    data: FloatTomogramData,
+    features: FloatTomogramData,
     tomo_name: str,
     result_dir: Path,
 ) -> None:
@@ -126,7 +133,7 @@ def _export_pca(
     image_dir = result_dir / tomo_name
     image_dir.mkdir(parents=True, exist_ok=True)
     
-    for idx in range(data.shape[0], step=10):
+    for idx in np.arange(data.shape[0], step=10):
         img_path = image_dir / f"{idx}.png"
         
         f_img = Image.fromarray(features[idx][::-1])
@@ -137,7 +144,7 @@ def _export_pca(
         img.paste(f_img, box=(d_img.size[0], 0))
         img.save(img_path)
 
-def _process_sample(src_dir: Path, dst_dir: Path, csv_dir: Path, dino_dir: Path, sample: str, datamodule: BaseDataModule, batch_size: int, image_dir: Optional[Path]):
+def _process_sample(src_dir: Path, dst_dir: Path, csv_dir: Path, model: torch.nn.Module, sample: str, datamodule: BaseDataModule, batch_size: int, image_dir: Optional[Path]):
     """Process all tomograms in a single sample by extracting and saving their DINOv2 features."""
     tomo_dir = src_dir / sample
     result_dir = dst_dir / sample
@@ -148,12 +155,8 @@ def _process_sample(src_dir: Path, dst_dir: Path, csv_dir: Path, dino_dir: Path,
     else:
         records = pd.read_csv(csv_file)["tomo_name"].to_list()
 
-    dataset = instantiate(datamodule.dataset, data_root=tomo_dir)(records)
-    dataloader = instantiate(datamodule.dataloader)(dataset)
-
-    torch.hub.set_dir(dino_dir)
-    model = torch.hub.load(*dino_model, verbose=False).cuda()
-    model.eval()
+    dataset = instantiate(datamodule.dataset, data_root=tomo_dir)(records=records)
+    dataloader = instantiate(datamodule.dataloader)(dataset=dataset)
 
     for i, x in track(
         enumerate(dataloader),
@@ -162,27 +165,39 @@ def _process_sample(src_dir: Path, dst_dir: Path, csv_dir: Path, dino_dir: Path,
     ):
         features = _dino_features(x, model, batch_size)
         
+        data = {}
         with h5py.File(tomo_dir / records[i]) as fh:
-            data = fh["data"][()]
+            for key in fh.keys():
+                data[key] = fh[key][()]
+            
         _save_data(data, features, records[i], result_dir)
         # Save PCA calculation of features
         if image_dir is not None:
-            _export_pca(data, features.astype(np.float32), records[i][:-4], image_dir / sample)
+            _export_pca(data["data"], features.astype(np.float32), records[i][:-4], image_dir / sample)
 
 def run_dino(cfg: DinoFeaturesConfig) -> None:
     """Process all tomograms in a sample or samples by extracting and saving their DINOv2 features."""
+    # Convert paths to Paths
+    cfg.paths.model_dir = Path(cfg.paths.model_dir)
+    cfg.paths.data_dir = Path(cfg.paths.data_dir)
+    cfg.paths.exp_dir = Path(cfg.paths.exp_dir)
+    
     src_dir = cfg.paths.data_dir / cfg.paths.tomo_name
     dst_dir = cfg.paths.data_dir / cfg.paths.feature_name
     csv_dir = cfg.paths.data_dir / cfg.paths.csv_name
     image_dir = cfg.paths.exp_dir / "dino_images"
-    sample_names = cfg.sample if cfg.sample is not None else [s for s in samples if (src_dir / s).exists()]
+    sample_names = [cfg.sample.name] if cfg.sample is not None else [s for s in samples if (src_dir / s).exists()]
+
+    torch.hub.set_dir(cfg.dino_dir)
+    model = torch.hub.load(*dino_model, verbose=False).cuda()
+    model.eval()
 
     for sample_name in sample_names:
         _process_sample(
             src_dir,
             dst_dir,
             csv_dir,
-            cfg.dino_dir,
+            model,
             sample_name,
             cfg.datamodule,
             cfg.batch_size,

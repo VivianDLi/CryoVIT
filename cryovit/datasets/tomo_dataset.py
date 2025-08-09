@@ -1,16 +1,18 @@
 """Dataset class for loading DINOv2 features for CryoVIT models."""
 
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Union
 from typing import Dict
 from typing import List
 
 import h5py
 import numpy as np
 import pandas as pd
+import torch
 from torch.utils.data import Dataset
 
 from cryovit.config import tomogram_exts
+from cryovit.types import TomogramData
 
 class TomoDataset(Dataset):
     """A dataset class for handling and preprocessing tomographic data for CryoVIT models."""
@@ -41,7 +43,7 @@ class TomoDataset(Dataset):
         self.label_key = label_key
         self.split_key = split_key
         self.aux_keys = aux_keys
-        self.data_root = data_root
+        self.data_root = data_root if isinstance(data_root, Path) else Path(data_root)
         self.train = train
         self.predict = predict
 
@@ -49,7 +51,7 @@ class TomoDataset(Dataset):
         """Returns the total number of tomograms in the dataset."""
         return len(self.records)
 
-    def __getitem__(self, idx) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> TomogramData:
         """Retrieves a single item from the dataset.
 
         Args:
@@ -70,7 +72,14 @@ class TomoDataset(Dataset):
         if self.train:
             self._random_crop(data)
 
-        return data
+        return TomogramData(
+            sample=record["sample"],
+            tomo_name=record["tomo_name"],
+            split_id=data["split_id"] if "split_id" in data else None,
+            data=data["input"],
+            label=data["label"],
+            aux_data={key: data[key] for key in self.aux_keys if key in data}
+        )
 
     def _read_records(self, records: Optional[pd.DataFrame]) -> pd.DataFrame:
         if records is not None:
@@ -111,7 +120,9 @@ class TomoDataset(Dataset):
 
         with h5py.File(tomo_path) as fh:
             data["input"] = fh[self.input_key][()]
-            data["label"] = fh[self.label_key][()]
+            if data["input"].dtype == np.uint8:
+                data["input"] = data["input"].astype(np.float32) / 255.0
+            data["label"] = fh["labels"][self.label_key][()]
             data |= {key: fh[key][()] for key in self.aux_keys}
 
         return data

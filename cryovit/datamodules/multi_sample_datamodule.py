@@ -11,24 +11,25 @@ from cryovit.datamodules.base_datamodule import BaseDataModule
 class MultiSampleDataModule(BaseDataModule):
     """Data module for CryoVIT experiments involving multiple samples."""
 
-    def __init__(self, sample: Union[str, List[str]], split_id: Optional[int], split_key: Optional[str], test_sample: Optional[Union[str, List[str]]] = None, **kwargs) -> None:
+    def __init__(self, sample: List[str], split_id: Optional[int], split_key: Optional[str], test_sample: Optional[List[str]] = None, **kwargs) -> None:
         """Train on a fraction of tomograms and leave out one sample for evaluation.
 
         Args:
-            sample (Union[str, List[str]]): List of samples used for training.
+            sample (List[str]): List of samples used for training.
             split_id (Optional[int]): An optional split ID for validation.
             split_key (str): The key used to select splits using split_id.
-            test_sample (Optional[Union[str, List[str]]]): List of samples used for testing.
+            test_sample (Optional[List[str]]): List of samples used for testing.
         """
         super(MultiSampleDataModule, self).__init__(**kwargs)
+        # Validity checks
+        assert isinstance(sample, list), f"Multi sample 'sample' should be a list. Got {sample} instead."
+        assert test_sample is None or isinstance(test_sample, list), f"Multi sample 'test_sample' should be None or a list. Got {test_sample} instead."
+
         self.sample = sample
         self.split_id = split_id
         self.split_key = split_key
         self.test_sample = test_sample if test_sample is not None else self.sample
         
-        # Validity checks
-        assert isinstance(self.sample, list), f"Multi sample 'sample' should be a list. Got {self.sample} instead."
-        assert isinstance(self.test_sample, list), f"Multi sample 'test_sample' should be None or a list. Got {self.test_sample} instead."
 
     def train_df(self) -> pd.DataFrame:
         """Train tomograms: exclude those with the specified split_id.
@@ -64,3 +65,6 @@ class MultiSampleDataModule(BaseDataModule):
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
         return self.record_df[(self.record_df["sample"].isin(self.test_samples))][["sample", "tomo_name"]]
+
+    def predict_df(self) -> pd.DataFrame:
+        return self.record_df[self.record_df["sample"].isin(self.sample)][["sample", "tomo_name"]]

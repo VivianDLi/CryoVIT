@@ -1,6 +1,7 @@
-_partial_: True
 dataloader:
   num_workers: 0
+  prefetch_factor: null
+  batch_size: null
 
 #### DO NOT MODIFY ####
 

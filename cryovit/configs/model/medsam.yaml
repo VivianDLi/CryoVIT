@@ -1,0 +1,13 @@
+_target_: cryovit.models.SAM2
+lr: 1e-4
+input_key: data
+model_dir: ${paths.model_dir}/${paths.sam_name}
+
+custom_kwargs:
+  name: medsam
+
+#### DO NOT CHANGE ####
+
+defaults:
+  - base_model
+  - _self_

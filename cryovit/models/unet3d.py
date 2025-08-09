@@ -1,7 +1,7 @@
 """UNet3D model architecture for 3D tomogram segmentation."""
 
 import math
-from typing import Dict
+from typing import Dict, List
 from typing import Tuple
 
 import torch
@@ -9,7 +9,7 @@ from torch import Tensor
 from torch import nn
 
 from cryovit.models.base_model import BaseModel
-
+from cryovit.types import BatchedTomogramData
 
 class UNet3D(BaseModel):
     """UNet3D model implementation."""
@@ -46,9 +46,8 @@ class UNet3D(BaseModel):
         self.output_layer = nn.Conv3d(16, 1, 1, padding="same")
         self.PAD = max(16, 2 ** len(self.analysis_layers))
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward_volume(self, x: Tensor) -> Tensor:
         """Memory optimized forward pass for the UNet3D model."""
-        x = x.unsqueeze(0).unsqueeze(0)
         analysis_outputs = []
 
         for block in self.analysis_layers:
@@ -72,38 +71,36 @@ class UNet3D(BaseModel):
 
         x = self.output_layer(x)
         x = torch.clip(x, -5.0, 5.0)
-        return x.squeeze()
+        return x
+
+    def forward(self, batch: BatchedTomogramData) -> Tensor:
+        x = batch.tomo_batch # (B, D, C, H, W)
+        x = x.permute(1, 0, 2, 3, 4) # (B, C, D, H, W)
+        
+        # Add padding
+        new_size = [self.PAD * math.ceil(dim / self.PAD) for dim in x.size()[-3:]]
+        D, H, W = x.size()[-3:]
+        if new_size != [D, H, W]:
+            x = self._add_padding(x, new_size)
+        
+        x = self.forward_volume(x) # (B, 1, D, H, W)
+        
+        # Remove padding
+        if new_size != [D, H, W]:
+            x = x[..., :D, :H, :W]
+        
+        x = x.squeeze(1) # (B, D, H, W)
+        return x
 
     @torch.inference_mode()
-    def _preprocess(self, batch: Dict[str, Tensor]) -> Dict[str, Tensor]:
-        x, y = batch["input"], batch["label"]
-        new_size = [self.PAD * math.ceil(dim / self.PAD) for dim in x.size()]
-        d, h, w = x.size()
-
-        if new_size != [d, h, w]:  # pad to multiple of self.PAD
-            x_new = torch.zeros(*new_size, dtype=x.dtype, device=x.device)
-            y_new = -1 * torch.ones(*new_size, dtype=torch.int8, device=y.device)
-            x_new[:d, :h, :w] = x
-            y_new[:d, :h, :w] = y
-            x, y = x_new, y_new
-
-        x = (x.float() / 127.5) - 1  # scale byte tensor to [-1.0, 1.0]
-        batch["input"], batch["label"] = x, y
-        return batch
-
-    def _masked_predict(
-        self, batch: Dict[str, Tensor]
-    ) -> Tuple[Tensor, Tensor, Tensor]:
-        shape = batch["input"].size()
-        batch = self._preprocess(batch)
-
-        y_pred, y_true, y_pred_full = super()._masked_predict(batch)
-
-        if shape != y_pred_full.size():  # undo padding
-            d, h, w = shape
-            y_pred_full = y_pred_full[:d, :h, :w]
-
-        return y_pred, y_true, y_pred_full
+    def _add_padding(self, x: Tensor, new_size: List[int]) -> Tensor:
+        """Adds padding to the input to match the U-Net dimensions"""
+        # pad to multiple of self.PAD
+        D, H, W = x.size()[-3:]
+        x_new = torch.zeros(*new_size, dtype=x.dtype, device=x.device)
+        x_new[..., :D, :H, :W] = x
+        
+        return x_new
 
 
 class AnalysisBlock(nn.Module):

@@ -9,6 +9,7 @@ import torch
 from hydra.utils import instantiate
 from pytorch_lightning import Trainer, seed_everything
 
+from cryovit.models import create_sam_model_from_weights
 from cryovit.config import BaseExperimentConfig
 
 torch.set_float32_matmul_precision("high")
@@ -18,7 +19,11 @@ logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
 
 
 def setup_exp_dir(cfg: BaseExperimentConfig) -> Tuple[BaseExperimentConfig, Path]:
-    old_exp_dir = cfg.paths.exp_dir
+    # Convert paths to Paths
+    cfg.paths.model_dir = Path(cfg.paths.model_dir)
+    cfg.paths.data_dir = Path(cfg.paths.data_dir)
+    cfg.paths.exp_dir = Path(cfg.paths.exp_dir)
+    cfg.paths.results_dir = Path(cfg.paths.results_dir)
     
     if not isinstance(cfg.datamodule.sample, str) and isinstance(cfg.datamodule.sample, Iterable):
         sample = "_".join(sorted(cfg.datamodule.sample))
@@ -29,12 +34,13 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> Tuple[BaseExperimentConfig, Path
     if cfg.datamodule.split_id is not None:
         new_exp_dir = new_exp_dir / f"split_{cfg.datamodule.split_id}"
     
-    new_exp_dir.mkdir(parents=True, exist_ok=False)
+    cfg.paths.results_dir.mkdir(parents=True, exist_ok=True)
+    assert new_exp_dir.exists(), f"Experiment directory {new_exp_dir} does not exist. Run training first."
     cfg.paths.exp_dir = new_exp_dir
     
     if cfg.ckpt_path is None:
         cfg.ckpt_path = new_exp_dir / "weights.pt"
-    return cfg, old_exp_dir
+    return cfg
 
 def run_trainer(cfg: BaseExperimentConfig) -> None:
     """Sets up and executes the model evaluation using the specified configuration.
@@ -45,9 +51,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     seed_everything(cfg.random_seed, workers=True)
     
     # Setup experiment directories
-    cfg, old_exp_dir = setup_exp_dir(cfg)
-    prediction_result_dir = old_exp_dir / "predictions" / f"{cfg.name}"
-    csv_result_path = old_exp_dir / "results" / f"{cfg.name}.csv"
+    cfg = setup_exp_dir(cfg)
     assert cfg.ckpt_path.exists(), f"{cfg.paths.exp_dir} does not contain a checkpoint."
     
     # Setup dataset
@@ -55,11 +59,28 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     dataloader = instantiate(cfg.datamodule.dataloader)
     split_file = cfg.paths.data_dir / cfg.paths.csv_name / cfg.paths.split_name
     datamodule = instantiate(cfg.datamodule)(split_file=split_file, dataloader_fn=dataloader, dataset_fn=dataset)
+    logging.info("Setup dataset.")
     
     # Setup evaluation
-    callbacks = instantiate(cfg.callbacks, results_dir=prediction_result_dir, csv_result_path=csv_result_path)
-    logger = instantiate(cfg.logger)
+    callbacks = [instantiate(cb_cfg) for cb_cfg in cfg.callbacks.values()]
+    logger = [instantiate(lg_cfg) for lg_cfg in cfg.logger.values()]
     trainer: Trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
-    model = instantiate(cfg.model)
+    logging.info("Setup trainer.")
+    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
+        # Load SAM2 pre-trained models
+        model = create_sam_model_from_weights(cfg.model, cfg.paths.model_dir / cfg.paths.sam_name)
+    else:
+        model = instantiate(cfg.model)
+
+    # Load model weights
+    if cfg.ckpt_path.suffix == ".pt":
+        model.load_state_dict(torch.load(cfg.ckpt_path))
+    elif cfg.ckpt_path.suffix == ".ckpt":
+        model = model.load_from_checkpoint(cfg.ckpt_path)
+    else:
+        raise ValueError(f"Unsupported checkpoint format: {cfg.ckpt_path.suffix}. Use .pt or .ckpt files.")
     
-    trainer.test(model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    logging.info("Setup model.")
+    
+    logging.info("Starting testing.")
+    trainer.test(model, datamodule=datamodule)

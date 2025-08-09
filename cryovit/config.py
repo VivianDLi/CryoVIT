@@ -1,6 +1,6 @@
 """Config file for CryoVIT experiments."""
 
-from dataclasses import dataclass
+from dataclasses import InitVar, dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
@@ -53,31 +53,28 @@ class BaseModel:
 
     Attributes:
         input_key (str): Key to get the input data from a tomogram.
+        model_dir (Optional[Path]): Optional directory to download model weights to (for SAMv2 models).
         lr (float): Learning rate for the model training.
         weight_decay (float): Weight decay (L2 penalty) rate. Default is 1e-3.
         losses (Tuple[Dict]): Configuration for loss functions used in training.
         metrics (Tuple[Dict]): Configuration for metrics used during model evaluation.
+        custom_kwargs (InitVar[dict]): Optional dictionary of custom keyword arguments to pass to the model.
     """
-
     _target_: str = MISSING
-
-    name: str = MISSING
+    
     input_key: str = MISSING
+    model_dir: Optional[Path] = None
     lr: float = MISSING
     weight_decay: float = 1e-3
-    losses: Tuple[Dict] = (
-        dict(
-            _target_="cryovit.models.losses.DiceLoss",
-            name="DiceLoss"
-        ),
-    )
-    metrics: Tuple[Dict] = (
-        dict(
-            _target_="cryovit.models.metrics.DiceMetric",
-            name="DiceMetric",
-            threshold=0.5
-        ),
-    )
+    losses: Dict = MISSING
+    metrics: Dict = MISSING
+    
+    custom_kwargs: InitVar[dict] = None
+    
+    def __post_init__(self, custom_kwargs: dict) -> None:
+        if custom_kwargs is not None:
+            for key, value in custom_kwargs.items():
+                setattr(self, key, value)
 
 
 @dataclass
@@ -92,7 +89,6 @@ class BaseTrainer:
         enable_checkpointing (bool): Flag to enable or disable model checkpointing.
         enable_model_summary (bool): Enable model summarization.
     """
-
     _target_: str = "pytorch_lightning.Trainer"
     
     accelerator: str = "gpu"
@@ -114,8 +110,7 @@ class BaseDataModule:
         dataset (Dict): Configuration options for the dataset.
         dataloader (Dict): Configuration options for the dataloader.
     """
-
-    _target_: str = MISSING
+    _target_: str = ""
     _partial_: bool = True
 
     # OmegaConf doesn't support Union[Sample, Tuple[Sample]] yet, so moved type-checking to config validation instead
@@ -133,22 +128,25 @@ class ExperimentPaths:
     """Configuration for managing experiment paths in CryoVIT experiments.
 
     Attributes:
-        project_dir (Path): Directory path for code projects.
+        model_dir (Path): Directory path for downloaded models.
         data_dir (Path): Directory path for tomogram data and .csv files.
         exp_dir (Path): Directory path for saving results from an experiment.
+        results_dir (Path): Directory path for saving overall results.
         tomo_name (str): Name of the directory in data_dir with tomograms.
         feature_name (str): Name of the directory in data_dir with DINOv2 features.
-        dino_name (str): Name of the directory in project_dir to save DINOv2 model.
+        dino_name (str): Name of the directory in model_dir to save DINOv2 model.
         csv_name (str): Name of the directory in data_dir with .csv files.
         split_name(str): Name of the .csv file with training splits.
     """
-    project_dir: Path = MISSING
+    model_dir: Path = MISSING
     data_dir: Path = MISSING
     exp_dir: Path = MISSING
+    results_dir: Path = MISSING
     
-    tomo_name: str = "tomo_annot"
+    tomo_name: str = "tomograms"
     feature_name: str = "dino_features"
-    dino_name: str = "foundation_models"
+    dino_name: str = "DINOv2"
+    sam_name: str = "SAMv2"
     csv_name: str = "csv"
     split_name: str = "splits.csv"
 
@@ -169,7 +167,7 @@ class DinoFeaturesConfig:
     batch_size: int = 128
     dino_dir: Path = MISSING
     paths: ExperimentPaths = MISSING
-    datamodule: BaseDataModule = MISSING
+    datamodule: Dict = MISSING
     sample: Optional[Sample] = MISSING
     export_features: bool = False
 
@@ -198,10 +196,11 @@ class BaseExperimentConfig:
     paths: ExperimentPaths = MISSING
     model: BaseModel = MISSING
     trainer: BaseTrainer = MISSING
-    callbacks: Optional[List] = None
-    logger: Optional[List] = None
+    callbacks: Dict[str, Any] = MISSING
+    logger: Dict[str, Any] = MISSING
     datamodule: BaseDataModule = MISSING
     ckpt_path: Optional[Path] = None
+
 
 cs = ConfigStore.instance()
 
@@ -238,6 +237,8 @@ def validate_dino_config(cfg: DinoFeaturesConfig) -> None:
     if missing_keys:
         logging.error("\n".join(error_msg))
         sys.exit(1)
+        
+    OmegaConf.set_struct(cfg, False)
 
 def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
     """Validates an experiment configuration.
@@ -252,7 +253,7 @@ def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
     Raises:
         SystemExit: If any configuration parameters are missing, or any samples are not valid, terminating the script."""
     missing_keys = OmegaConf.missing_keys(cfg)
-    error_msg = ["The following parameters were missing from train_model.yaml:"]
+    error_msg = ["The following parameters were missing from config:"]
 
     for i, key in enumerate(missing_keys, 1):
         error_msg.append(f"{i}. {key}")
@@ -266,9 +267,17 @@ def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
     invalid_samples = []
     if isinstance(cfg.datamodule.sample, str):
         cfg.datamodule.sample = [cfg.datamodule.sample]
+    if isinstance(cfg.datamodule.test_sample, str):
+        cfg.datamodule.test_sample = [cfg.datamodule.test_sample]
+
     for sample in cfg.datamodule.sample:
         if sample not in samples:
             invalid_samples.append(sample)
+            
+    if cfg.datamodule.test_sample is not None:
+        for sample in cfg.datamodule.test_sample:
+            if sample not in samples:
+                invalid_samples.append(sample)
     
     for i, sample in enumerate(invalid_samples, 1):
         error_msg.append(f"{i}. {sample}")

@@ -1,13 +1,9 @@
-_target_: pytorch_lightning.loggers.wandb.WandbLogger
-name: ${name}
-save_dir: ${paths.exp_dir}
-offline: False
-id: null
-entity: chiulab
-project: CryoVIT
-log_model: False
-config:
-  model: ${model.name}
-  experiment: ${name}
-  split_id: ${datamodule.split_id}
-  sample: ${datamodule.sample}
+wandb:
+  _target_: pytorch_lightning.loggers.wandb.WandbLogger
+  name: ${name}
+  save_dir: ${paths.exp_dir}
+  offline: False
+  id: null
+  entity: chiulab
+  project: CryoVIT
+  log_model: False

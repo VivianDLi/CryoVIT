@@ -12,24 +12,24 @@ from cryovit.datamodules.base_datamodule import BaseDataModule
 class LOOSampleDataModule(BaseDataModule):
     """Data module for CryoVIT experiments leaving out one sample."""
 
-    def __init__(self, sample: Union[str, List[str]], split_id: Optional[int], split_key: Optional[str], test_sample: Optional[Union[str, List[str]]] = None, **kwargs) -> None:
+    def __init__(self, sample: List[str], split_id: Optional[int], split_key: Optional[str], test_sample: Optional[List[str]] = None, **kwargs) -> None:
         """Train on a fraction of tomograms and leave out one sample for evaluation.
 
         Args:
-            sample (Union[str, List[str]]): The sample to excluded from training and used for testing.
+            sample (List[str]): The sample to excluded from training and used for testing.
             split_id (Optional[int]): An optional split ID for validation.
             split_key (str): The key used to select splits using split_id.
-            test_sample (Optional[Union[str, List[str]]]): The sample to test on. Should be None.
+            test_sample (Optional[List[str]]): The sample to test on. Should be None.
         """
         super(LOOSampleDataModule, self).__init__(**kwargs)
-        self.sample = sample
+        # Validity checks
+        assert len(sample) == 1, f"LOO sample 'sample' should be a single string list. Got {sample} instead."
+        assert test_sample is None, f"LOO sample 'test_sample' should be None. Got {self.test_sample} instead."
+        
+        self.sample = sample[0]
         self.split_id = split_id
         self.split_key = split_key
         self.test_sample = test_sample
-        
-        # Validity checks
-        assert isinstance(self.sample, str), f"LOO sample 'sample' should be a single string. Got {self.sample} instead."
-        assert test_sample is None, f"LOO sample 'test_sample' should be None. Got {self.test_sample} instead."
 
     def train_df(self) -> pd.DataFrame:
         """Train tomograms: exclude those with the specified split_id and sample.

@@ -35,7 +35,7 @@ class DiceLoss(nn.Module):
 class FocalLoss(nn.Module):
     """Focal loss to address class imbalance by focusing more on hard-to-classify instances."""
 
-    def __init__(self, gamma=2) -> None:
+    def __init__(self, gamma=2, **kwargs) -> None:
         """Initializes the FocalLoss instance.
 
         Args:

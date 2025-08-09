@@ -1,10 +1,12 @@
-project_dir: /home/vivian/Documents/Work/Data
+model_dir: /home/vivian/Documents/Work/Data/foundation_models
 data_dir: /home/vivian/Documents/Work/Data/cryovit-data
 exp_dir: /home/vivian/Documents/Work/Results/CryoVIT
+results_dir: ${paths.exp_dir}
 
 # tomo_name: ???
 # feature_name: ???
 # dino_name: ???
+# sam_name: ???
 # csv_name: ???
 # split_name: ???
 

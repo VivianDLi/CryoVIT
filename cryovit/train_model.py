@@ -2,8 +2,10 @@
 
 import logging
 import warnings
+import traceback
 
 import hydra
+from hydra.core.global_hydra import GlobalHydra
 
 from cryovit.config import BaseExperimentConfig, validate_experiment_config
 from cryovit.run import train_model
@@ -35,7 +37,10 @@ def main(cfg: BaseExperimentConfig) -> None:
         train_model.run_trainer(cfg)
     except BaseException as err:
         logging.error(f"{type(err).__name__}: {err}")
-
+        logging.error(traceback.format_exc())
 
 if __name__ == "__main__":
+    # Clear SAM2 hydra initialization if it exists
+    if GlobalHydra.instance().is_initialized():
+        GlobalHydra.instance().clear()
     main()

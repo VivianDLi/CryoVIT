@@ -11,24 +11,25 @@ from cryovit.datamodules.base_datamodule import BaseDataModule
 class SingleSampleDataModule(BaseDataModule):
     """Data module for CryoVIT experiments involving a single sample."""
 
-    def __init__(self, sample: Union[str, List[str]], split_id: Optional[int], split_key: str, test_sample: Optional[Union[str, List[str]]] = None, **kwargs) -> None:
+    def __init__(self, sample: List[str], split_id: Optional[int], split_key: str, test_sample: Optional[List[str]] = None, **kwargs) -> None:
         """Create a datamodule for training and testing on a single sample.
 
         Args:
-            sample (Union[str, List[str]]): The sample to train on.
+            sample (List[str]): The sample to train on.
             split_id (Optional[int]): An optional split_id to validate with.
             split_key (str): The key used to select splits using split_id.
-            test_sample (Optional[Union[str, List[str]]]): The sample to test on. Should be equal to sample or None.
+            test_sample (Optional[List[str]]): The sample to test on. Should be equal to sample or None.
         """
         super(SingleSampleDataModule, self).__init__(**kwargs)
-        self.sample = sample
+        # Validity checks
+        assert len(sample) == 1, f"Single sample 'sample' should be a single string list. Got {sample} instead."
+        assert test_sample is None or len(test_sample) == 1, f"Single sample 'test_sample' should be a single string list or None. Got {test_sample} instead."
+
+        self.sample = sample[0]
         self.split_id = split_id
         self.split_key = split_key
-        self.test_sample = test_sample
+        self.test_sample = test_sample[0] if test_sample is not None else test_sample
         
-        # Validity checks
-        assert isinstance(self.sample, str), f"Single sample 'sample' should be a single string. Got {self.sample} instead."
-        assert self.test_sample is None or isinstance(self.test_sample, str), f"Single sample 'test_sample' should be a single string or None. Got {self.test_sample} instead."
 
     def train_df(self) -> pd.DataFrame:
         """Train tomograms: exclude those from the sample with the specified split_id.

@@ -1,3 +1,4 @@
-_target_: cryovit.models.callbacks.TestPredictionWriter
-results_dir: ${paths.exp_dir}/predictions
-label_key: ${label_key}
+test_pred_writer:
+  _target_: cryovit.models.callbacks.TestPredictionWriter
+  results_dir: ${paths.results_dir}/predictions/${name}
+  label_key: ${label_key}

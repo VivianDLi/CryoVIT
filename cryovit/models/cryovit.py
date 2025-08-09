@@ -5,6 +5,7 @@ from torch import Tensor
 from torch import nn
 
 from cryovit.models.base_model import BaseModel
+from cryovit.types import BatchedTomogramData
 
 
 class CryoVIT(BaseModel):
@@ -30,13 +31,19 @@ class CryoVIT(BaseModel):
             nn.Conv3d(8, 1, 3, padding="same"),
         )
 
-    def forward(self, x: Tensor) -> Tensor:
-        """Forward pass for the CryoVIT model."""
-        x = x.unsqueeze(0)
+    def forward_volume(self, x: Tensor) -> Tensor:
         x = self.layers(x)
         x = self.output_layer(x)
         x = torch.clip(x, -5.0, 5.0)
-        return x.squeeze()
+        return x
+
+    def forward(self, batch: BatchedTomogramData) -> Tensor:
+        """Forward pass for the CryoVIT model."""
+        x = batch.tomo_batch # (B, D, C, H, W)
+        x = x.permute(0, 2, 1, 3, 4) # (B, C, D, H, W)
+        x = self.forward_volume(x)
+        x = x.squeeze(1) # (B, D, H, W)
+        return x
 
 
 class SynthesisBlock(nn.Module):

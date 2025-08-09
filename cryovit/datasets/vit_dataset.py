@@ -5,12 +5,13 @@ from typing import List
 
 import h5py
 import numpy as np
-import pandas as pd
 import torch
 import torch.nn.functional as F
 from numpy.typing import NDArray
 from torch.utils.data import Dataset
 from torchvision.transforms import Normalize
+
+from cryovit.types import IntTomogramData
 
 
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
@@ -27,7 +28,7 @@ class VITDataset(Dataset):
             root (Path): Root directory where tomogram files are stored.
             records (List[str]): A list of strings representing paths to tomogram files in the root directory.
         """
-        self.root = data_root
+        self.root = data_root if isinstance(data_root, Path) else Path(data_root)
         self.records = records
         self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
 
@@ -35,7 +36,7 @@ class VITDataset(Dataset):
         """Returns the number of tomograms in the dataset."""
         return len(self.records)
 
-    def __getitem__(self, idx) -> torch.Tensor:
+    def __getitem__(self, idx: int) -> torch.Tensor:
         """Retrieves a preprocessed tomogram tensor from the dataset by index.
 
         Args:
@@ -54,7 +55,7 @@ class VITDataset(Dataset):
         data = self._load_tomogram(record)
         return self._transform(data)
 
-    def _load_tomogram(self, record: str) -> NDArray[np.uint8]:
+    def _load_tomogram(self, record: str) -> IntTomogramData:
         """Loads a tomogram from disk.
 
         Args:
@@ -68,7 +69,7 @@ class VITDataset(Dataset):
         with h5py.File(tomo_path) as fh:
             return fh["data"][()]
 
-    def _transform(self, data: NDArray[np.uint8]) -> torch.Tensor:
+    def _transform(self, data: IntTomogramData) -> torch.Tensor:
         """Applies normalization and resizing transformations to the tomogram.
 
         Args:

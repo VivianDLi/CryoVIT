@@ -9,7 +9,7 @@ hydra:
   mode: MULTIRUN
   sweeper:
     params:
-      name: ${datamodule}_${datamodule.sample}_${model}_${label_key}
+      name: ${hydra:runtime.choices.datamodule}_${datamodule.sample}_${model}_${label_key}
       datamodule.sample:
         BACHD,
         Q109,

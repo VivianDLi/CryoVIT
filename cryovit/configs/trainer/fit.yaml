@@ -1,4 +1,6 @@
-max_epochs: 1
+max_epochs: 50
+enable_checkpointing: True
+default_root_dir: ${paths.exp_dir}
 
 #### DO NOT CHANGE ####
 defaults:

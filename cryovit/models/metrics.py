@@ -10,7 +10,7 @@ class DiceMetric(Metric):
 
     higher_is_better = True
 
-    def __init__(self, threshold):
+    def __init__(self, threshold, **kwargs):
         """Initializes the DiceMetric instance with a threshold for binary classification.
 
         Args:

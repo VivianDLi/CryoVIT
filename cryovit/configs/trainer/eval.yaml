@@ -1,5 +1,5 @@
-max_epochs: 1
 enable_model_summary: False
+enable_checkpointing: False
 
 #### DO NOT CHANGE ####
 defaults:

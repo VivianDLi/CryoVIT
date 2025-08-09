@@ -2,30 +2,31 @@
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Any, Callable, Literal
+from typing import Callable, Literal
 from typing import Dict
-from typing import List
 from typing import Tuple
 
-from hydra.utils import instantiate
+import numpy as np
 import torch
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities import grad_norm
 from torch import Tensor
 from torch import nn
 from torch.optim import Optimizer
-from torchmetrics import Metric
 
+from cryovit.types import BatchedModelResult, BatchedTomogramData
 
 class BaseModel(LightningModule, ABC):
     """Base model with configurable loss functions and metrics."""
 
     def __init__(
         self,
+        input_key: str,
         lr: float,
         weight_decay: float,
         losses: Tuple[Dict],
         metrics: Tuple[Dict],
+        **kwargs
     ) -> None:
         """Initializes the BaseModel with specified learning rate, weight decay, loss functions, and metrics.
 
@@ -36,11 +37,14 @@ class BaseModel(LightningModule, ABC):
             metrics (List[Dict]): List of metric function configs for training, validation, and testing.
         """
         super(BaseModel, self).__init__()
+        self.input_key = input_key
         self.lr = lr
         self.weight_decay = weight_decay
 
         self.configure_losses(losses)
         self.configure_metrics(metrics)
+        
+        self.save_hyperparameters()
 
     def configure_optimizers(self) -> Optimizer:
         """Configures the optimizer with the initialization parameters."""
@@ -50,17 +54,15 @@ class BaseModel(LightningModule, ABC):
             weight_decay=self.weight_decay,
         )
         
-    def configure_losses(self, losses: List[Dict]) -> Dict[str, Callable]:
-        self.loss_fns = {
-            l["name"]: instantiate(l) for l in losses
-        }
+    def configure_losses(self, losses: Dict[str, Callable]) -> None:
+        self.loss_fns = losses
     
-    def configure_metrics(self, metrics: List[Dict]) -> Dict[str, Dict[str, Callable]]:
+    def configure_metrics(self, metrics: Dict) -> None:
         self.metric_fns = nn.ModuleDict(
             {
-                "TRAIN": nn.ModuleDict({m["name"]: instantiate(m) for m in metrics}),
-                "VAL": nn.ModuleDict({m["name"]: instantiate(m) for m in metrics}),
-                "TEST": nn.ModuleDict({m["name"]: instantiate(m) for m in metrics}),
+                "TRAIN": nn.ModuleDict(deepcopy(metrics)),
+                "VAL": nn.ModuleDict(deepcopy(metrics)),
+                "TEST": nn.ModuleDict(deepcopy(metrics)),
             }
         )
 
@@ -70,13 +72,12 @@ class BaseModel(LightningModule, ABC):
         self.log_dict(norms, on_step=True)
 
     def _masked_predict(
-        self, batch: Dict[str, Tensor]
+        self, batch: BatchedTomogramData
     ) -> Tuple[Tensor, Tensor, Tensor]:
         """Performs prediction while applying a mask to the inputs and labels based on the label value."""
-        data = batch["input"]
-        y_true = batch["label"]
+        y_true = batch.labels # (B, D, H, W)
 
-        y_pred_full = self(data)
+        y_pred_full = self(batch) # (B, D, H, W)
         mask = (y_true > -1.0).detach()
 
         y_pred = torch.masked_select(y_pred_full, mask).view(-1, 1)
@@ -102,7 +103,7 @@ class BaseModel(LightningModule, ABC):
             metric_log_dict[f"{prefix}/metric/{m}"] = m_fn
         self.log_dict(metric_log_dict, prog_bar=True, on_epoch=True, on_step=False, batch_size=1)
 
-    def _do_step(self, batch: Dict[str, Tensor], batch_idx: int, prefix: Literal["train", "val", "test"]) -> float:
+    def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> float:
         """Processes a single batch of data, computes the loss and updates metrics."""
         y_pred, y_true, _ = self._masked_predict(batch)
 
@@ -114,63 +115,67 @@ class BaseModel(LightningModule, ABC):
         self.log_stats(losses, prefix)
         return losses["total"]
 
-    def training_step(self, batch: Dict[str, Tensor], batch_idx: int) -> float:
+    def training_step(self, batch: BatchedTomogramData, batch_idx: int) -> float:
         """Processes one batch during training."""
         return self._do_step(batch, batch_idx, "train")
 
-    def validation_step(self, batch: Dict[str, Tensor], batch_idx: int) -> float:
+    def validation_step(self, batch: BatchedTomogramData, batch_idx: int) -> float:
         """Processes one batch during validation."""
         return self._do_step(batch, batch_idx, "val")
 
-    def test_step(self, batch: Dict[str, Tensor], batch_idx: int) -> Dict[str, Any]:
+    def test_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:
         """Processes one batch during testing, captures predictions, and computes losses and metrics.
 
         Args:
-            batch (Dict[str, Tensor]): The batch of data being processed.
+            batch (BatchedTomogramData): The batch of data being processed.
             batch_idx (int): Index of the batch.
 
         Returns:
             Dict[str, Any]: A dictionary containing test results and metrics for this batch.
         """
+        assert batch.aux_data is not None and "data" in batch.aux_data, "Batch aux_data must contain 'data' key for testing."
+        input_data = [torch.from_numpy(batch.aux_data["data"][i]) for i in range(batch.num_tomos)]
+    
         y_pred, y_true, y_pred_full = self._masked_predict(batch)
-        # Normalize to [0-1]
-        y_pred_full = (y_pred_full - y_pred_full.min()) / (y_pred_full.max() - y_pred_full.min())
 
-        results = {
-            "sample": batch["sample"],
-            "tomo_name": batch["tomo_name"],
-            "data": batch["data"].cpu().numpy(),
-            "label": batch["label"].cpu().numpy(),
-            "preds": y_pred_full.cpu().numpy(),
-        }
-        if "split_id" in batch:
-            results["split_id"] = batch["split_id"]
-            
-        results["losses"] = {k: v.item() for k, v in self.compute_losses(y_pred, y_true).items()}
+        samples, tomo_names = batch.metadata.identifiers
+        split_id = batch.metadata.split_id
+        data = [t_data.cpu().numpy() for t_data in input_data]
+        labels = [t_labels.cpu().numpy() for t_labels in batch.labels]
+        preds = [t_preds.cpu().numpy() for t_preds in y_pred_full]
+        if split_id is not None:
+            split_id = [s_id.item() for s_id in split_id]
 
-        results["metrics"] = {}
+        losses = {k: v.item() for k, v in self.compute_losses(y_pred, y_true).items()}
+        metrics = {}
         for m, m_fn in self.metric_fns["TEST"].items():
             score = m_fn(y_pred, y_true)
-            results["metrics"][m] = score.item()
+            metrics[m] = score.item()
             m_fn.reset()
 
-        return results
+        return BatchedModelResult(
+            num_tomos=batch.num_tomos,
+            samples=samples,
+            tomo_names=tomo_names,
+            split_id=split_id,
+            data=data,
+            label=labels,
+            preds=preds,
+            losses=losses,
+            metrics=metrics
+        )
     
-    def predict_step(self, batch: Dict[str, Tensor], batch_idx: int) -> Dict[str, Any]:
-        _, _, y_pred_full = self._masked_predict(batch)
+    def predict_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:
+        result = self.test_step(batch, batch_idx)
+        
         # Normalize to [0-255]
-        data = batch["data"]
-        data = (255 * (data - data.min()) / (data.max() - data.min())).to(torch.uint8)
-        y_pred_full = (255 * (y_pred_full - y_pred_full.min()) / (y_pred_full.max() - y_pred_full.min())).to(torch.uint8)
-        
-        results = {
-            "sample": batch["sample"],
-            "tomo_name": batch["tomo_name"],
-            "data": data.cpu().numpy(),
-            "preds": y_pred_full.cpu().numpy()
-        }
-        
-        return results
+        for n in range(result.num_tomos):
+            data = result.data[n]
+            pred = result.preds[n]
+            result.data[n] = (255 * (data - data.min()) / (data.max() - data.min())).astype(np.uint8)
+            result.preds[n] = (255 * (pred - pred.min()) / (pred.max() - pred.min())).astype(np.uint8)
+            
+        return result
 
     @abstractmethod
     def forward(self):

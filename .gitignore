@@ -3,6 +3,7 @@ debug/*
 experiments/*
 cryovit_dataset/*
 no_cancer/*
+outputs/
 
 slurm_scripts/outputs/*
 slurm_scripts/nc_outputs/*

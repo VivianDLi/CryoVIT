@@ -4,6 +4,8 @@ additional_keys:
   - data
 random_seed: 42
 
+logger: {}
+
 #################### Do not modify #####################
 
 defaults:
@@ -14,7 +16,6 @@ defaults:
     - rich_progress_bar
     - test_pred_writer
     - csv_writer
-  - logger: null
   - datamodule: ???
   - base_experiment_config
   - _self_
