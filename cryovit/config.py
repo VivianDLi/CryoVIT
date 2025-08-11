@@ -85,6 +85,7 @@ class BaseTrainer:
         accelerator (str): Type of hardware acceleration ('gpu' for this configuration).
         devices (str): Number of devices to use for training.
         precision (str): Precision configuration for training (e.g., '16-mixed').
+        default_root_dir (Path): Default root directory for saving checkpoints and logs.
         max_epochs (Optional[int]): The maximum number of epochs to train for.
         enable_checkpointing (bool): Flag to enable or disable model checkpointing.
         enable_model_summary (bool): Enable model summarization.
@@ -94,6 +95,7 @@ class BaseTrainer:
     accelerator: str = "gpu"
     devices: str = 1
     precision: str = "16-mixed"
+    default_root_dir: Path =  MISSING
     max_epochs: Optional[int] = None
     enable_checkpointing: bool = False
     enable_model_summary: bool = True

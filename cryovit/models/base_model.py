@@ -109,8 +109,8 @@ class BaseModel(LightningModule, ABC):
 
         losses = self.compute_losses(y_pred, y_true)
 
-        for metric_fn in self.metric_fns[prefix.upper()].values():
-            metric_fn(y_pred, y_true)
+        for _, m_fn in self.metric_fns[prefix.upper()].items():
+            m_fn(y_pred, y_true)
 
         self.log_stats(losses, prefix)
         return losses["total"]

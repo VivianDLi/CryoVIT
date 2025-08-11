@@ -75,7 +75,7 @@ class UNet3D(BaseModel):
 
     def forward(self, batch: BatchedTomogramData) -> Tensor:
         x = batch.tomo_batch # (B, D, C, H, W)
-        x = x.permute(1, 0, 2, 3, 4) # (B, C, D, H, W)
+        x = x.permute(0, 2, 1, 3, 4) # (B, C, D, H, W)
         
         # Add padding
         new_size = [self.PAD * math.ceil(dim / self.PAD) for dim in x.size()[-3:]]
@@ -97,7 +97,8 @@ class UNet3D(BaseModel):
         """Adds padding to the input to match the U-Net dimensions"""
         # pad to multiple of self.PAD
         D, H, W = x.size()[-3:]
-        x_new = torch.zeros(*new_size, dtype=x.dtype, device=x.device)
+        new_shape = list(x.shape[:-3]) + new_size
+        x_new = torch.zeros(*new_shape, dtype=x.dtype, device=x.device)
         x_new[..., :D, :H, :W] = x
         
         return x_new

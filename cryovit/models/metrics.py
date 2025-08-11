@@ -10,7 +10,7 @@ class DiceMetric(Metric):
 
     higher_is_better = True
 
-    def __init__(self, threshold, **kwargs):
+    def __init__(self, threshold: float, **kwargs):
         """Initializes the DiceMetric instance with a threshold for binary classification.
 
         Args:
@@ -44,4 +44,4 @@ class DiceMetric(Metric):
         Returns:
             Tensor: The average Dice score across all batches.
         """
-        return self.dice_score / self.total
+        return self.dice_score / self.total if self.total > 0 else torch.tensor(0.0)

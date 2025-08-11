@@ -122,6 +122,8 @@ class TomoDataset(Dataset):
             data["input"] = fh[self.input_key][()]
             if data["input"].dtype == np.uint8:
                 data["input"] = data["input"].astype(np.float32) / 255.0
+            if len(data["input"].shape) == 3:
+                data["input"] = data["input"][np.newaxis, ...] # add channel dimension
             data["label"] = fh["labels"][self.label_key][()]
             data |= {key: fh[key][()] for key in self.aux_keys}
 
