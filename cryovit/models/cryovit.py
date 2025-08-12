@@ -43,7 +43,7 @@ class CryoVIT(BaseModel):
         x = x.permute(0, 2, 1, 3, 4) # (B, C, D, H, W)
         x = self.forward_volume(x)
         x = x.squeeze(1) # (B, D, H, W)
-        return x
+        return torch.sigmoid(x)
 
 
 class SynthesisBlock(nn.Module):

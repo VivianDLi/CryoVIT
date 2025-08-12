@@ -1,0 +1,23 @@
+_target_: cryovit.models.SAM2
+input_key: data
+model_dir: ${paths.model_dir}/${paths.sam_name}
+
+custom_kwargs:
+  prob_use_pt_input: [0.5, 0]
+  prob_use_box_input: [0.5, 0]
+  prob_sample_from_gt: 0.1
+  num_slices_to_correct: [2, 1]
+  rand_slices_to_correct: [True, False]
+  num_init_cond_slices: [1, 1]
+  rand_init_cond_slices: [True, False]
+  add_corrected_slices_as_cond: True
+  num_corrections_pt_per_slice: 7
+  grid_points_per_side: null
+  prompt_method: NONE
+  freeze_image_encoder: True
+
+#### DO NOT CHANGE ####
+
+defaults:
+  - base_model
+  - _self_

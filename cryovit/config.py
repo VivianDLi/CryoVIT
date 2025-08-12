@@ -95,7 +95,7 @@ class BaseTrainer:
     accelerator: str = "gpu"
     devices: str = 1
     precision: str = "16-mixed"
-    default_root_dir: Path =  MISSING
+    default_root_dir: Optional[Path] =  None
     max_epochs: Optional[int] = None
     enable_checkpointing: bool = False
     enable_model_summary: bool = True

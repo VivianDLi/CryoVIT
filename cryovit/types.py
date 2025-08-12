@@ -23,10 +23,17 @@ LabelData = NewType("LabelData", NDArray[np.uint8])
 #### Class Definitions ####
 
 class SAMPromptMethod(Enum):
-    """Enumeration for SAM prompt methods."""
+    """
+    Enumeration for SAM prompt methods.
+    
+    Attributes:
+        NONE: No prompt method. Inputs an empty tensor as the "mask" to SAMv2.
+        POINT_MASK: Randomly either uses either a point or a box mask as the prompt.
+        GRID: Uses a uniform grid of points as the prompt.
+    """
     NONE = "none"
-    POINT = "point"
-    AUTO = "auto"
+    POINT_MASK = "point/mask"
+    GRID = "grid"
 
 @tensorclass
 class TomogramData:
@@ -72,6 +79,16 @@ class BatchedTomogramMetadata:
         names = [self.tomo_names[i[1].item()] for i in self.unique_id]
         return samples, names
     
+    @property
+    def subset(self, batch_idxs: torch.LongTensor) -> "BatchedTomogramMetadata":
+        """Returns a subset of the metadata for the specified batch indices."""
+        return BatchedTomogramMetadata(
+            samples=[self.samples[i] for i in batch_idxs],
+            tomo_names=[self.tomo_names[i] for i in batch_idxs],
+            unique_id=self.unique_id[batch_idxs],
+            split_id=self.split_id[batch_idxs] if self.split_id is not None else None
+        )
+    
     
 @tensorclass
 class BatchedTomogramData:
@@ -116,13 +133,34 @@ class BatchedTomogramData:
         # Get index limits of tomograms that are large enough
         tomo_idxs = self.tomo_sizes.argwhere(self.tomo_sizes > idx).long()
         return tomo_idxs, self.tomo_batch[tomo_idxs, :, idx, :, :] # a B' and B'xCxHxW tensor
-        
+    
+    @property
+    def index_to_flat_batch(self, idx: int) -> torch.LongTensor:
+        """Returns a [BxD] tensor containing the indices corresponding to a certain slice in a flat batch tensor."""
+        batch_idxs, _ = self.index_to_slice_batch(idx)
+        batch_sizes = self.tomo_sizes[batch_idxs]
+        batch_ll = torch.cumsum(batch_sizes) - batch_sizes
+        slice_idxs = batch_ll + idx
+        return slice_idxs.to(dtype=torch.long)
+
     @property
     def flat_tensor_unpad_index(self) -> torch.LongTensor:
         """Returns a [[BxD]] tensor containing indices for removing padding from a [[BxD]xCxHxW] tensor."""
         D = self.tomo_batch.size(dim=1)
         return torch.concat([torch.arange(self.tomo_sizes[b]) + D * b for b in self.num_tomos])
         
+    @property
+    def labeled_indices(self) -> Tuple[torch.LongTensor, torch.LongTensor]:
+        """Returns a (B, D) tensor containing batch and slice indices of slices with labels in the batch."""
+        nonzero_indices = torch.nonzero(self.labels, as_tuple=False)[:, :].unique(sorted=True, dim=0).long()
+        return nonzero_indices[:, 0], nonzero_indices[:, 1]  # batch, slice
+    
+    @property
+    def labeled_tomos_as_batch_tensor(self) -> torch.FloatTensor:
+        """Returns a [BxDxCxHxW] tensor containing only slices with labels in the batch."""
+        batch_idxs, slice_idxs = self.labeled_indices
+        return self.tomo_batch[batch_idxs, slice_idxs, ...]
+
     @property
     def batch_tensor_to_batch_list(self, batch_tensor: torch.Tensor) -> List[torch.Tensor]:
         """Returns a list of [DxCxHxW] tensors from a [BxDxCxHxW] tensor, removing any padding (C is optional)."""
@@ -134,6 +172,16 @@ class BatchedTomogramData:
         flat_tensor = batch_tensor.reshape(-1, *batch_tensor.shape[2:])
         unpad_idx = self.flat_tensor_unpad_index
         return flat_tensor[unpad_idx]
+    
+    def subset(self, batch_idxs: torch.LongTensor, slice_idxs: torch.LongTensor) -> "BatchedTomogramData":
+        """Returns a subset of the batch for the specified indices."""
+        return BatchedTomogramData(
+            tomo_batch=self.tomo_batch[batch_idxs, slice_idxs, ...],
+            tomo_sizes=self.tomo_sizes[batch_idxs],
+            labels=self.labels[batch_idxs, slice_idxs, ...],
+            metadata=self.metadata.subset(batch_idxs),
+            aux_data={k: [v[i] for i in batch_idxs] for k, v in self.aux_data.items()} if self.aux_data else None
+        )
         
     
 @dataclass

@@ -24,7 +24,6 @@ class DiceLoss(nn.Module):
         Returns:
             Tensor: Computed Dice loss value.
         """
-        y_pred = torch.sigmoid(y_pred)
         intersection = torch.sum(y_true * y_pred)
         denom = torch.sum(y_true) + torch.sum(y_pred)
         dice_loss = 1 - (2 * intersection) / (denom + 1e-3)

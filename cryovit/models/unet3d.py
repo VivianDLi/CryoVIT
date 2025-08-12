@@ -90,7 +90,7 @@ class UNet3D(BaseModel):
             x = x[..., :D, :H, :W]
         
         x = x.squeeze(1) # (B, D, H, W)
-        return x
+        return torch.sigmoid(x)
 
     @torch.inference_mode()
     def _add_padding(self, x: Tensor, new_size: List[int]) -> Tensor:

@@ -29,7 +29,6 @@ class DiceMetric(Metric):
             y_pred (Tensor): Predicted probabilities or logits from the model.
             y_true (Tensor): Ground truth labels.
         """
-        y_pred = torch.sigmoid(y_pred)
         y_pred = torch.where(y_pred < self.thresh, 0.0, 1.0)
 
         intersection = torch.sum(y_true * y_pred)
