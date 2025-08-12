@@ -64,7 +64,7 @@ class MultiSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
-        return self.record_df[(self.record_df["sample"].isin(self.test_samples))][["sample", "tomo_name"]]
+        return self.record_df[(self.record_df["sample"].isin(self.test_sample))][["sample", "tomo_name"]]
 
     def predict_df(self) -> pd.DataFrame:
         return self.record_df[self.record_df["sample"].isin(self.sample)][["sample", "tomo_name"]]

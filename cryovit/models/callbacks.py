@@ -55,12 +55,12 @@ class TestPredictionWriter(Callback):
             segs = np.where(preds > 0.5, 1, 0).astype(np.uint8) # Binary classify
             
             with h5py.File(output_file, "w") as fh:
-                fh.create_group("labels")
                 fh.create_group("predictions")
+                fh.create_group("labels")
                 
                 fh.create_dataset("data", data=data, shape=data.shape, dtype=data.dtype)
-                fh["labels"].create_dataset(self.label_key, data=segs, shape=segs.shape, dtype=segs.dtype, compression="gzip")
-                fh["predictions"].create_dataset(self.label_key, data=true_segs, shape=labels.shape, dtype=labels.dtype, compression="gzip")
+                fh["predictions"].create_dataset(self.label_key, data=segs, shape=segs.shape, dtype=segs.dtype, compression="gzip")
+                fh["labels"].create_dataset(self.label_key, data=true_segs, shape=labels.shape, dtype=labels.dtype, compression="gzip")
         
 class CsvWriter(Callback):
     """Callback to save model performance metrics to a .csv."""
@@ -119,8 +119,8 @@ class CsvWriter(Callback):
         matching_rows = (results_df["tomo_name"] == tomo_name) & (results_df["sample"] == sample)
         if split_id is not None:
             matching_rows = matching_rows & (results_df["split_id"] == split_id)
-        if len(matching_rows) > 0:
-            logging.warning(f"Data with sample {sample}, name {tomo_name}, and split {split_id} already has an entry. Replacing {len(matching_rows)} rows...")
+        if matching_rows.any():
+            logging.warning(f"Data with sample {sample}, name {tomo_name}, and split {split_id} already has an entry. Replacing {matching_rows.sum()} rows...")
             results_df = results_df[~matching_rows]
         # Add metrics to df
         metrics_df = self._create_metric_df(sample, tomo_name, split_id, **outputs.metrics)

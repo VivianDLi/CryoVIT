@@ -6,4 +6,5 @@ wandb:
   id: null
   entity: chiulab
   project: CryoVIT
+  group: ${datamodule.sample}
   log_model: False

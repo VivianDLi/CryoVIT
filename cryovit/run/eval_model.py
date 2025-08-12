@@ -58,7 +58,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     dataset = instantiate(cfg.datamodule.dataset)
     dataloader = instantiate(cfg.datamodule.dataloader)
     split_file = cfg.paths.data_dir / cfg.paths.csv_name / cfg.paths.split_name
-    datamodule = instantiate(cfg.datamodule)(split_file=split_file, dataloader_fn=dataloader, dataset_fn=dataset)
+    datamodule = instantiate(cfg.datamodule, _convert_="all")(split_file=split_file, dataloader_fn=dataloader, dataset_fn=dataset)
     logging.info("Setup dataset.")
     
     # Setup evaluation

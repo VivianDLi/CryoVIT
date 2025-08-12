@@ -2,7 +2,7 @@
 defaults:
   - override /datamodule: single
 
-name: single_ad_cristae
+name: ${hydra:runtime.choices.datamodule}_${hydra:runtime.choices.model}_ad_cristae
 label_key: cristae
 
 hydra:
@@ -24,7 +24,7 @@ hydra:
         6,
         7,
         8,
-        9,
+        9
       model:
         cryovit,
         unet3d

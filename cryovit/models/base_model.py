@@ -60,9 +60,9 @@ class BaseModel(LightningModule, ABC):
     def configure_metrics(self, metrics: Dict) -> None:
         self.metric_fns = nn.ModuleDict(
             {
-                "TRAIN": nn.ModuleDict(deepcopy(metrics)),
-                "VAL": nn.ModuleDict(deepcopy(metrics)),
-                "TEST": nn.ModuleDict(deepcopy(metrics)),
+                "TRAIN": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),
+                "VAL": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),
+                "TEST": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),
             }
         )
 
