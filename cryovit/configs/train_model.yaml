@@ -18,4 +18,3 @@ defaults:
   - _self_
   - override hydra/hydra_logging: rich_logger
   - override hydra/job_logging: rich_logger
-  - override hydra/launcher: local_1hr

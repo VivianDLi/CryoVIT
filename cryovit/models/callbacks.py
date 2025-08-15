@@ -48,11 +48,11 @@ class TestPredictionWriter(Callback):
             
             # Binary classify predictions into segmentations and convert to correct formats
             data = outputs.data[n]
-            labels = outputs.label[n]
+            labels = outputs.label[n].astype(np.uint8)
             preds = outputs.preds[n]
-            preds = (preds - preds.min()) / (preds.max() - preds.min()) # Normalize to [0, 1]
-            true_segs = np.where(labels > 0, 1, 0).astype(np.uint8)
-            segs = np.where(preds > 0.5, 1, 0).astype(np.uint8) # Binary classify
+            preds = (preds - preds.min()) / (preds.max() - preds.min())
+            segs = preds.astype(np.float32) # Normalize to [0, 1]
+            true_segs = np.where(labels > 0, 1, 0).astype(np.uint8)  # Convert labels to binary segmentation
             
             with h5py.File(output_file, "w") as fh:
                 fh.create_group("predictions")
@@ -117,7 +117,7 @@ class CsvWriter(Callback):
 
         # Warn if row already exists and remove (i.e., replace)
         matching_rows = (results_df["tomo_name"] == tomo_name) & (results_df["sample"] == sample)
-        if split_id is not None:
+        if split_id is not None and "split_id" in results_df.columns:
             matching_rows = matching_rows & (results_df["split_id"] == split_id)
         if matching_rows.any():
             logging.warning(f"Data with sample {sample}, name {tomo_name}, and split {split_id} already has an entry. Replacing {matching_rows.sum()} rows...")

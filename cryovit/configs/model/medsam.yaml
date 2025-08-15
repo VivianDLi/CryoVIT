@@ -1,8 +1,5 @@
 lr: 1e-4
-
-custom_kwargs:
-  name: medsam
-  prompt_method: NONE
+name: MedSAM
 
 #### DO NOT CHANGE ####
 

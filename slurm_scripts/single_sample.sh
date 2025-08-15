@@ -1,25 +1,81 @@
 #!/bin/bash
 
-# Check if two arguments are provided
-if [ "$#" -ne 2 ]; then
-    echo "Usage: $0 model (cryovit or unet3d) label_key (mito or mito_ai)"
+# Check if three arguments are provided
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 sample group (ad, hd, campy, bacteria) model (cryovit, unet3d, sam2, or medsam) label_key (mito, microtubule, or cristae)"
     exit 1
 fi
 
-samples=(
-    "BACHD"
-    "dN17_BACHD"
-    "Q109"
-    "Q18"
-    "Q20"
-    "Q53"
-    "Q53_KD"
-    "Q66"
-    "Q66_GRFS1"
-    "Q66_KD"
-    "WT"
-    # "cancer"
-)
+case $1 in
+    "ad")
+        samples=(
+            "AD"
+            "AD_Abeta"
+            "Aged"
+            "Young"
+        )
+        ;;
+    "hd")
+        case $3 in
+            "mito")
+                samples=(
+                    "BACHD"
+                    "dN17_BACHD"
+                    "Q109"
+                    "Q18"
+                    "Q20"
+                    "Q53"
+                    "Q53_KD"
+                    "Q66"
+                    "Q66_GRFS1"
+                    "Q66_KD"
+                    "WT"
+                )
+                ;;
+            "microtubule")
+                samples=(
+                    "BACHD_microtubules"
+                    "Q109_microtubules"
+                    "Q18_microtubules"
+                    "WT_microtubules"
+                )
+                ;;
+            "cristae")
+                samples=(
+                    "Q18"
+                    "Q53"
+                )
+                ;;
+            *)
+                echo "Invalid label_key for hd group. Choose from: mito, microtubule, cristae."
+                exit 1
+                ;;
+        esac
+    "rgc")
+        samples=(
+            "RGC_CM"
+            "RGC_control"
+            "RGC_naPP"
+            "RGC_PP"
+        )
+        ;;
+    "algae")
+        samples=(
+            "CZI_Algae"
+        )
+        ;;
+    "campy")
+        samples=(
+            "CZI_Campy_C"
+            "CZI_Campy_CDel"
+            "CZI_Campy_F"
+        )
+        ;;
+    *)
+        echo "Invalid group. Choose from: ad, hd, campy, bacteria."
+        exit 1
+        ;;
+esac
 
 max_jobs=1024  # Maximum concurrent jobs
 total_jobs=$(( ${#samples[@]} * 10 ))
@@ -32,8 +88,8 @@ for sample in "${samples[@]}"; do
             sleep 10  # Wait for 10 seconds before checking again
         done
 
-        exp_cmd="$(dirname "$0")/single_sample_job.sh $sample $split_id $1 $2"
-        job_name="single_sample_${sample}_${split_id}_${1}_${2}"
+        exp_cmd="$(dirname "$0")/single_sample_job.sh $sample $split_id $1 $2 $3"
+        job_name="single_sample_${2}_${3}_${sample}_${split_id}"
         out_dir="$(dirname "$0")/outputs"
 
         sbatch \

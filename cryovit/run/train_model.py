@@ -7,6 +7,7 @@ from pathlib import Path
 import torch
 from hydra.utils import instantiate
 from pytorch_lightning import Trainer, seed_everything
+import wandb
 
 from cryovit.models import create_sam_model_from_weights
 from cryovit.config import BaseExperimentConfig
@@ -33,6 +34,19 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     
     new_exp_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.exp_dir = new_exp_dir
+    
+    # Setup WandB Logger
+    for name, logger in cfg.logger.items():
+        if name == "wandb":
+            config = {
+                "model": cfg.model.name,
+                "experiment": cfg.name,
+                "split_id": cfg.datamodule.split_id,
+                "sample": sample
+            }
+            logger.config.update(config)
+            logger.name = f"{sample}_{cfg.datamodule.split_id}" if cfg.datamodule.split_id is not None else sample
+    
     return cfg
 
 def run_trainer(cfg: BaseExperimentConfig) -> None:
@@ -45,7 +59,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     
     # Setup experiment directories
     cfg = setup_exp_dir(cfg)
-    ckpt_path = cfg.paths.exp_dir / "last.ckpt"
+    ckpt_path = cfg.paths.exp_dir / "last.ckpt" if cfg.ckpt_path is None else cfg.ckpt_path
     weights_path = cfg.paths.exp_dir / "weights.pt"
 
     # Setup dataset
@@ -102,3 +116,4 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     logging.info("Saving model.")
     torch.save(model.state_dict(), weights_path)
     torch.cuda.empty_cache()
+    wandb.finish(quiet=True)

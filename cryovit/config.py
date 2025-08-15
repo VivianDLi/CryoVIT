@@ -52,6 +52,7 @@ class BaseModel:
     """Base class for model configurations used in CryoVIT experiments.
 
     Attributes:
+        name (str): Name of the model for identification purposes.
         input_key (str): Key to get the input data from a tomogram.
         model_dir (Optional[Path]): Optional directory to download model weights to (for SAMv2 models).
         lr (float): Learning rate for the model training.
@@ -61,6 +62,7 @@ class BaseModel:
         custom_kwargs (InitVar[dict]): Optional dictionary of custom keyword arguments to pass to the model.
     """
     _target_: str = MISSING
+    name: str = MISSING
     
     input_key: str = MISSING
     model_dir: Optional[Path] = None
@@ -148,7 +150,7 @@ class ExperimentPaths:
     tomo_name: str = "tomograms"
     feature_name: str = "dino_features"
     dino_name: str = "DINOv2"
-    sam_name: str = "SAMv2"
+    sam_name: str = "SAM2"
     csv_name: str = "csv"
     split_name: str = "splits.csv"
 
@@ -201,6 +203,7 @@ class BaseExperimentConfig:
     callbacks: Dict[str, Any] = MISSING
     logger: Dict[str, Any] = MISSING
     datamodule: BaseDataModule = MISSING
+    ckpt_path: Optional[Path] = None
     resume_ckpt: bool = False
 
 

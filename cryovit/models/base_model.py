@@ -26,6 +26,7 @@ class BaseModel(LightningModule, ABC):
         weight_decay: float,
         losses: Tuple[Dict],
         metrics: Tuple[Dict],
+        name: str = "BaseModel",
         **kwargs
     ) -> None:
         """Initializes the BaseModel with specified learning rate, weight decay, loss functions, and metrics.
@@ -37,6 +38,7 @@ class BaseModel(LightningModule, ABC):
             metrics (List[Dict]): List of metric function configs for training, validation, and testing.
         """
         super(BaseModel, self).__init__()
+        self.name = name
         self.input_key = input_key
         self.lr = lr
         self.weight_decay = weight_decay

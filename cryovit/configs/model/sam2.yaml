@@ -1,8 +1,5 @@
 lr: 1e-4
-
-custom_kwargs:
-  name: sam2
-  prompt_method: NONE
+name: SAM2
 
 #### DO NOT CHANGE ####
 

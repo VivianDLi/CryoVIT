@@ -3,7 +3,7 @@ name: ${hydra:runtime.choices.datamodule}_${hydra:runtime.choices.model}_test
 label_key: mito
 
 datamodule:
-  sample: BACHD
+  sample: Q109
   test_sample: null
   dataloader:
     batch_size: 1
@@ -17,6 +17,6 @@ hydra:
     params:
       datamodule: single,multi
       datamodule.split_id: 0,1
-      model: cryovit,unet3d,medsam,sam2,sam2_mask
+      model: cryovit,unet3d,medsam,sam2
   sweep:
     dir: /tmp/${oc.env:USER}/multirun
