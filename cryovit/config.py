@@ -201,7 +201,7 @@ class BaseExperimentConfig:
     callbacks: Dict[str, Any] = MISSING
     logger: Dict[str, Any] = MISSING
     datamodule: BaseDataModule = MISSING
-    ckpt_path: Optional[Path] = None
+    resume_ckpt: bool = False
 
 
 cs = ConfigStore.instance()

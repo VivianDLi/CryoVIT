@@ -239,8 +239,13 @@ class SAM2(BaseModel, SAM2Base):
         all_slice_outputs = {}
         all_slice_outputs.update(output_dict["cond_frame_preds"])
         all_slice_outputs.update(output_dict["non_cond_frame_preds"])
+        B, D, _, H, W = data.tomo_batch.shape
+        total_output = torch.zeros((B, D, H, W), dtype=torch.float32)
+        for slice_id, preds in all_slice_outputs.items():
+            flat_idxs = data.index_to_flat_batch(slice_id)
+            total_output[flat_idxs, slice_id, ...] = preds
 
-        return all_slice_outputs
+        return total_output
 
     def track_step(self, slice_id: int, is_init_cond_frame: bool, current_vision_feats: Tensor, current_vision_pos_embeds: Tensor, feat_sizes: Tensor, point_inputs: Optional[Tensor], mask_inputs: Optional[Tensor], gt_masks: Optional[Tensor], slices_to_add_correction_pt: Optional[List[int]], output_dict: Dict[str, Any], num_slices: int) -> None:
         if slices_to_add_correction_pt is None:

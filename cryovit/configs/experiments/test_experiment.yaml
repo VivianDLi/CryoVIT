@@ -1,28 +1,22 @@
 # @package _global_
-defaults:
-  - override /datamodule: single
-  - override /model: unet3d
-
 name: ${hydra:runtime.choices.datamodule}_${hydra:runtime.choices.model}_test
 label_key: mito
 
 datamodule:
   sample: BACHD
   test_sample: null
-  split_id: 0
   dataloader:
     batch_size: 1
 
 trainer:
-  max_epochs: 5
+  max_epochs: 1
 
 hydra:
   mode: MULTIRUN
   sweeper:
     params:
       datamodule: single,multi
-      datamodule.split_id: 0,1,2,3,4,5,6,7,8,9
-      datamodule.dataloader.batch_size: 1
-      model: cryovit
+      datamodule.split_id: 0,1
+      model: cryovit,unet3d,medsam,sam2,sam2_mask
   sweep:
     dir: /tmp/${oc.env:USER}/multirun

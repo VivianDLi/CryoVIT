@@ -6,6 +6,9 @@ random_seed: 42
 
 logger: {}
 
+hydra/launcher:
+  timeout_min: 30
+
 #################### Do not modify #####################
 
 defaults:
@@ -21,3 +24,4 @@ defaults:
   - _self_
   - override hydra/hydra_logging: rich_logger
   - override hydra/job_logging: rich_logger
+  - override hydra/launcher: local_1hr

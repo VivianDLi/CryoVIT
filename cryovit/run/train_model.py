@@ -45,6 +45,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     
     # Setup experiment directories
     cfg = setup_exp_dir(cfg)
+    ckpt_path = cfg.paths.exp_dir / "last.ckpt"
     weights_path = cfg.paths.exp_dir / "weights.pt"
 
     # Setup dataset
@@ -91,7 +92,11 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
         logging.warning(f"Unable to compile forward pass: {e}")
 
     logging.info("Starting training.")
-    trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.ckpt_path)
+    if cfg.resume_ckpt and ckpt_path.exists():
+        logging.info(f"Resuming training from checkpoint: {ckpt_path}")
+        trainer.fit(model, datamodule=datamodule, ckpt_path=str(ckpt_path))
+    else:
+        trainer.fit(model, datamodule=datamodule)
 
     # Save model
     logging.info("Saving model.")

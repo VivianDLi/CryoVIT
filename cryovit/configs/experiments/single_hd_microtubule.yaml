@@ -2,7 +2,7 @@
 defaults:
   - override /datamodule: single
 
-name: single_hd_microtubule
+name: single_hd_%{hydra:runtime.choices.model}_microtubule
 label_key: microtubule
 
 hydra:
@@ -10,23 +10,10 @@ hydra:
   sweeper:
     params:
       datamodule.sample:
-        Q109_Microtubules,
-        Q18_Microtubules,
-        BACHD_Microtubules,
-        WT_Microtubules
+        Q109_Microtubules,Q18_Microtubules,BACHD_Microtubules,WT_Microtubules
       datamodule.split_id:
-        0,
-        1,
-        2,
-        3,
-        4,
-        5,
-        6,
-        7,
-        8,
-        9,
+        0,1,2,3,4,5,6,7,8,9
       model:
-        cryovit,
-        unet3d
+        cryovit,unet3d,medsam,sam2,sam2_mask
   sweep:
     dir: /tmp/${oc.env:USER}/multirun

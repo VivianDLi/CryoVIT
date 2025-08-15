@@ -13,7 +13,7 @@ custom_kwargs:
   add_corrected_slices_as_cond: True
   num_corrections_pt_per_slice: 7
   grid_points_per_side: null
-  prompt_method: NONE
+  prompt_method: ???
   freeze_image_encoder: True
 
 #### DO NOT CHANGE ####

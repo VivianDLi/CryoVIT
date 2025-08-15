@@ -1,8 +1,8 @@
 lr: 1e-4
 
 custom_kwargs:
-  name: medsam
-  prompt_method: NONE
+  name: sam2_mask
+  prompt_method: POINT_MASK
 
 #### DO NOT CHANGE ####
 
