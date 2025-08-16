@@ -70,6 +70,8 @@ class BaseDataModule(LightningDataModule, ABC):
         """
         self._load_splits()
         records = self.train_df()
+        if records.empty:
+            raise ValueError("No training data found in the provided split file.")
         dataset = self.dataset_fn(records, train=True)
         return self.dataloader_fn(dataset, shuffle=True, collate_fn=collate_fn)
 
@@ -81,6 +83,8 @@ class BaseDataModule(LightningDataModule, ABC):
         """
         self._load_splits()
         records = self.val_df()
+        if records.empty:
+            raise ValueError("No validation data found in the provided split file.")
         dataset = self.dataset_fn(records, train=False)
         return self.dataloader_fn(dataset, shuffle=False, collate_fn=collate_fn)
 
@@ -92,6 +96,8 @@ class BaseDataModule(LightningDataModule, ABC):
         """
         self._load_splits()
         records = self.test_df()
+        if records.empty:
+            raise ValueError("No testing data found in the provided split file.")
         dataset = self.dataset_fn(records, train=False)
         return self.dataloader_fn(dataset, shuffle=False, collate_fn=collate_fn)
 
@@ -103,6 +109,8 @@ class BaseDataModule(LightningDataModule, ABC):
         """
         self._load_splits(predict=True)
         records = self.predict_df()
+        if records.empty:
+            raise ValueError("No prediction data found in the provided split file.")
         dataset = self.dataset_fn(records, train=False)
         return self.dataloader_fn(dataset, shuffle=False, collate_fn=collate_fn)
 
@@ -164,7 +172,6 @@ def collate_fn(batch: List[TomogramData]) -> BatchedTomogramData:
             use_splits = False
             
     tomo_batch = tomo_batch.permute((0, 2, 1, 3, 4)) # (B, C, D, H, W) -> (B, D, C, H, W)
-    B = tomo_batch.shape[0]
     metadata = BatchedTomogramMetadata(
         samples=list(unique_samples),
         tomo_names=list(unique_names),
@@ -176,6 +183,5 @@ def collate_fn(batch: List[TomogramData]) -> BatchedTomogramData:
         tomo_sizes=tomo_sizes,
         labels=labels,
         aux_data=aux_data,
-        metadata=metadata,
-        batch_size=[B]
+        metadata=metadata
     )

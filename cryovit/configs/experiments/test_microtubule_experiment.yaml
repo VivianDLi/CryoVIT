@@ -1,5 +1,5 @@
 # @package _global_
-name: ${hydra:runtime.choices.datamodule}_${hydra:runtime.choices.model}_${hydra:runtime.choices.datamodule.sample}_test_microtubule
+name: ${hydra:runtime.choices.datamodule}_${hydra:runtime.choices.model}_test_microtubule
 label_key: microtubule
 
 datamodule:

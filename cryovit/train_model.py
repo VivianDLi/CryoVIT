@@ -6,6 +6,8 @@ import traceback
 
 import hydra
 from hydra.core.global_hydra import GlobalHydra
+import torch
+import wandb
 
 from cryovit.config import BaseExperimentConfig, validate_experiment_config
 from cryovit.run import train_model
@@ -32,12 +34,20 @@ def main(cfg: BaseExperimentConfig) -> None:
         BaseException: Captures and logs any exceptions that occur during the training process.
     """
     validate_experiment_config(cfg)
-
     try:
-        train_model.run_trainer(cfg)
+        result = train_model.run_trainer(cfg)
     except BaseException as err:
         logging.error(f"{type(err).__name__}: {err}")
         logging.error(traceback.format_exc())
+        result = -1
+    finally:
+        # Free up GPU memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+        # Ensure W&B finishes properly
+        wandb.Settings(quiet=True)  # Disable W&B output
+        if wandb.run is not None:
+            wandb.finish(exit_code=result)
 
 if __name__ == "__main__":
     # Clear SAM2 hydra initialization if it exists

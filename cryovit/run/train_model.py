@@ -5,6 +5,7 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import torch
+from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from pytorch_lightning import Trainer, seed_everything
 import wandb
@@ -38,13 +39,6 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     # Setup WandB Logger
     for name, logger in cfg.logger.items():
         if name == "wandb":
-            config = {
-                "model": cfg.model.name,
-                "experiment": cfg.name,
-                "split_id": cfg.datamodule.split_id,
-                "sample": sample
-            }
-            logger.config.update(config)
             logger.name = f"{sample}_{cfg.datamodule.split_id}" if cfg.datamodule.split_id is not None else sample
     
     return cfg
@@ -74,7 +68,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     logger = [instantiate(lg_cfg) for lg_cfg in cfg.logger.values()]
     trainer: Trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
     logging.info("Setup trainer.")
-    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
+    if cfg.model._target_ == "cryovit.models.SAM2":
         # Load SAM2 pre-trained models
         model = create_sam_model_from_weights(cfg.model, cfg.paths.model_dir / cfg.paths.sam_name)
     else:
@@ -84,6 +78,12 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     # Log hyperparameters
     if trainer.logger:
         hparams = {
+            "datamodule_type": HydraConfig.get().runtime.choices["datamodule"],
+            "model_name": cfg.model.name,
+            "label_key": cfg.label_key,
+            "experiment": cfg.name,
+            "split_id": cfg.datamodule.split_id,
+            "sample": "_".join(sorted(cfg.datamodule.sample)) if isinstance(cfg.datamodule.sample, Iterable) else cfg.datamodule.sample,
             "cfg": cfg,
             "model": model,
             "model/params/total": sum(p.numel() for p in model.parameters()),
@@ -91,9 +91,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
             "model/params/non_trainable": sum(p.numel() for p in model.parameters() if not p.requires_grad),
             "datamodule": datamodule,
             "trainer": trainer,
-            "experiment": cfg.name,
-            "split_id": cfg.datamodule.split_id,
-            "sample": cfg.datamodule.sample,
+            "resume_ckpt": cfg.resume_ckpt,
             "ckpt_path": cfg.ckpt_path,
             "seed": cfg.random_seed,
         }
@@ -115,5 +113,3 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     # Save model
     logging.info("Saving model.")
     torch.save(model.state_dict(), weights_path)
-    torch.cuda.empty_cache()
-    wandb.finish(quiet=True)

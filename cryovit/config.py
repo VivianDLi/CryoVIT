@@ -1,6 +1,6 @@
 """Config file for CryoVIT experiments."""
 
-from dataclasses import InitVar, dataclass
+from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Optional
@@ -71,12 +71,14 @@ class BaseModel:
     losses: Dict = MISSING
     metrics: Dict = MISSING
     
-    custom_kwargs: InitVar[dict] = None
-    
-    def __post_init__(self, custom_kwargs: dict) -> None:
-        if custom_kwargs is not None:
-            for key, value in custom_kwargs.items():
+    custom_kwargs: Optional[Dict] = None
+
+    def __post_init__(self) -> None:
+        if self.custom_kwargs is not None:
+            for key, value in self.custom_kwargs.items():
                 setattr(self, key, value)
+    
+        delattr(self, "custom_kwargs")  # Remove custom_kwargs from the dataclass after initialization
 
 
 @dataclass
