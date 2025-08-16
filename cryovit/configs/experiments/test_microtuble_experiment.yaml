@@ -1,0 +1,22 @@
+# @package _global_
+name: ${hydra:runtime.choices.datamodule}_${hydra:runtime.choices.model}_${hydra:runtime.choices.datamodule.sample}_test_microtubule
+label_key: microtubule
+
+datamodule:
+  dataloader:
+    batch_size: 1
+
+trainer:
+  max_epochs: 1
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule: single,multi
+      datamodule.sample:
+        AD,AD_Abeta,Aged,Young,Q109_Microtubules,Q18_Microtubules,BACHD_Microtubules,WT_Microtubules
+      datamodule.split_id: 0,1,2,3,4,5,6,7,8,9
+      model: cryovit,unet3d,medsam,sam2
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun
