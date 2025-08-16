@@ -21,7 +21,7 @@ from cryovit.config import DinoFeaturesConfig, BaseDataModule, samples, tomogram
 from cryovit.types import DinoFeaturesData, FloatTomogramData, IntTomogramData, LabelData
 
 torch.set_float32_matmul_precision("high")  # ensures tensor cores are used
-dino_model = ("facebookresearch/dinov2", "dinov2_vitg14")  # the giant variant of DINOv2
+dino_model = ("facebookresearch/dinov2", "dinov2_vitg14_reg")  # the giant variant of DINOv2
 
 @torch.inference_mode()
 def _dino_features(
