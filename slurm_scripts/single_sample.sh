@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Check if three arguments are provided
-if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 sample group (ad, hd, campy, bacteria) model (cryovit, unet3d, sam2, or medsam) label_key (mito, microtubule, or cristae)"
+# Check if four arguments are provided
+if [ "$#" -ne 4 ]; then
+    echo "Usage: $0 sample group (ad, hd, campy, bacteria) model (cryovit, unet3d, sam2, or medsam) label_key (mito, microtubule, or cristae) wandb_api_key"
     exit 1
 fi
 
@@ -88,7 +88,7 @@ for sample in "${samples[@]}"; do
             sleep 10  # Wait for 10 seconds before checking again
         done
 
-        exp_cmd="$(dirname "$0")/single_sample_job.sh $sample $split_id $1 $2 $3"
+        exp_cmd="$(dirname "$0")/single_sample_job.sh $sample $split_id $1 $2 $3 $4"
         job_name="single_sample_${2}_${3}_${sample}_${split_id}"
         out_dir="$(dirname "$0")/outputs"
 

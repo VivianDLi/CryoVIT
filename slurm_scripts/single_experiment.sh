@@ -1,16 +1,16 @@
 #!/bin/bash
 
 # Check if 1 or 3 arguments are provided
-if [ "$#" -ne 1 ] && [ "$#" -ne 3 ]; then
-    echo "Usage: $0 experiment_name (see configs/experiments) model (optional; cryovit, unet3d, sam2, or medsam) sample (optional) "
+if [ "$#" -ne 2 ] && [ "$#" -ne 4 ]; then
+    echo "Usage: $0 experiment_name (see configs/experiments) model (optional; cryovit, unet3d, sam2, or medsam) sample (optional) wandb_api_key"
     exit 1
 fi
 
 if [ "$#" -eq 3 ]; then
-    exp_cmd="$(dirname "$0")/single_experiment_job.sh $1 $2 $3"
+    exp_cmd="$(dirname "$0")/single_experiment_job.sh $1 $2 $3 $4"
     job_name="single_experiment_${1}_${2}_${3}"
 else
-    exp_cmd="$(dirname "$0")/single_experiment_job.sh $1"
+    exp_cmd="$(dirname "$0")/single_experiment_job.sh $1 $2"
     job_name="single_experiment_${1}"
 fi
 out_dir="$(dirname "$0")/outputs"
