@@ -123,11 +123,15 @@ class BatchedTomogramData:
     def index_to_slice_batch(self, idx: int) -> Tuple[torch.LongTensor, torch.FloatTensor]:
         """Returns a subsection of tomo_batch corresponding to a certain slice index and their batch indices, ignoring tomograms in the batch that are smaller than the slice index."""
         # Get index limits of tomograms that are large enough
+        if idx >= self.max_slices:
+            raise IndexError(f"Slice index {idx} is out of bounds for the maximum number of slices {self.max_slices}.")
         batch_idxs = torch.argwhere(self.tomo_sizes > idx).long()
         return batch_idxs, self.tomo_batch[batch_idxs, idx, :, :, :] # a B' and B'xCxHxW tensor
     
     def index_to_flat_batch(self, idx: int) -> torch.LongTensor:
         """Returns a [BxD] tensor containing the indices corresponding to a certain slice in a flat batch tensor."""
+        if idx >= self.max_slices:
+            raise IndexError(f"Slice index {idx} is out of bounds for the maximum number of slices {self.max_slices}.")
         batch_idxs = torch.argwhere(self.tomo_sizes > idx).long()
         batch_sizes = self.tomo_sizes[batch_idxs].flatten()
         batch_ll = torch.cumsum(batch_sizes, dim=0) - batch_sizes

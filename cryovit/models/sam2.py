@@ -107,15 +107,15 @@ class SAM2Train(SAM2Base):
         backbone_out["mask_inputs_per_slice"] = {}
         backbone_out["point_inputs_per_slice"] = {}
         B = data.total_slices
-        prompts = self.learnable_prompts.repeat(B, 1, 1)  # [B, num_learnable_prompts, embed_dim]
-        flat_box_prompts, flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"], prompts) # flat tensor form
+        prompts = self.learnable_prompts.repeat(B, 1, 1).to(data.tomo_batch.device)  # [B, num_learnable_prompts, embed_dim]
+        flat_box_points, flat_box_labels, flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"], prompts) # flat tensor form
         for n in init_cond_slices:
             idxs = data.index_to_flat_batch(n)
             if not use_pt_input:
                 backbone_out["mask_inputs_per_slice"][n] = flat_mask_prompts[idxs]
             else:
-                backbone_out["point_inputs_per_slice"][n] = flat_box_prompts[idxs]
-            
+                backbone_out["point_inputs_per_slice"][n] = {"point_coords": flat_box_points[idxs], "point_labels": flat_box_labels[idxs]}
+
         return backbone_out
 
     def forward_tracking(self, backbone_out: Dict[str, Any], data: BatchedTomogramData, return_dict: bool = False) -> Union[Dict[str, Any], Tensor]:
@@ -176,8 +176,11 @@ class SAM2Train(SAM2Base):
         B, D, _, H, W = data.tomo_batch.shape
         total_output = torch.zeros((B, D, H, W), dtype=torch.float32)
         for slice_id, preds in all_slice_outputs.items():
-            flat_idxs = data.index_to_flat_batch(slice_id)
-            total_output[flat_idxs, slice_id, ...] = preds
+            # Ensure predictions are all in the same device
+            if preds.device != total_output.device:
+                total_output = total_output.to(preds.device)
+            batch_idxs = data.index_to_slice_batch(slice_id)[0]
+            total_output[batch_idxs, slice_id, ...] = preds
 
         return total_output
 

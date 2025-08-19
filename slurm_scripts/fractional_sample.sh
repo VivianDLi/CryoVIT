@@ -95,7 +95,8 @@ for sample in "${samples[@]}"; do
         out_dir="$(dirname "$0")/nc_outputs"
 
         sbatch \
-            --partition="cryoem" \
+            --partition="ampere" \
+            --account="cryoem:C073" \
             --job-name="$job_name" \
             --output="${out_dir}/${job_name}.out" \
             --ntasks=1 \

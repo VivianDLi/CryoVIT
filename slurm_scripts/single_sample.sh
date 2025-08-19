@@ -94,14 +94,15 @@ for sample in "${samples[@]}"; do
         out_dir="$(dirname "$0")/outputs"
 
         sbatch \
-            --partition="cryoem" \
+            --partition="ampere" \
+            --account="cryoem:C073" \
             --job-name="$job_name" \
             --output="${out_dir}/${job_name}.out" \
             --ntasks=1 \
             --cpus-per-task=8 \
             --mem-per-cpu=6gb \
             --gres=gpu:a100:1 \
-            --time=01:00:00 \
+            --time=00:30:00 \
             --wrap="$exp_cmd"
 
         ((current_job++))

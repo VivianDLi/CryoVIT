@@ -90,12 +90,11 @@ class PromptPredictor(nn.Module):
 
         # Pass the output through the prediction heads
         box_outputs, box_labels = self.box_predictor(prompt_tokens[:, :2])
-        points_scale = torch.tensor([H, W], device=box_outputs.device)[-2:].view(1, 2) * self.scale_factor # [1, 2]
-        box_outputs *= points_scale  # Scale the box outputs to the image size
-        box_prompt = {"point_coords": box_outputs, "point_labels": box_labels}
+        points_scale = torch.tensor([H, W], device=box_outputs.device, dtype=box_outputs.dtype)[-2:].view(1, 2) * self.scale_factor # [1, 2]
+        box_outputs = box_outputs * points_scale  # Scale the box outputs to the image size
         mask_prompt = self.mask_predictor(dense_embeddings)
 
-        return box_prompt, mask_prompt
+        return box_outputs, box_labels, mask_prompt
 
 class PositionEmbedding1d(nn.Module):
     """1D position embedding for prompts."""
@@ -136,9 +135,9 @@ class BoxPredictor(nn.Module):
     def forward(self, x: Tensor) -> Tuple[Tensor, Tensor]:
         # x is expected to be of shape (B, n_tokens, 256)
         x = x.flatten(1)
-        x = self.mlp(x).unsqueeze(1).view(-1, 2, 2) # B, 1, 4 (i.e., B, N, 4)
+        x = self.mlp(x).unsqueeze(1).view(-1, 2, 2) # B, 2, 2 (i.e., B, N, 2)
         x = torch.sigmoid(x) # Convert to [0, 1] coordinates
-        labels = torch.tensor([self.top_left_label, self.bottom_right_label], device=x.device, dtype=torch.int32).repeat(x.shape[0])  # B, 2
+        labels = torch.tensor([[self.top_left_label, self.bottom_right_label]], device=x.device, dtype=torch.int32).repeat(x.shape[0], 1)  # B, N
         return x, labels
     
 class MaskPredictor(nn.Module):

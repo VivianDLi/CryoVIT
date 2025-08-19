@@ -11,7 +11,8 @@ job_name="dino_features_${1}"
 out_dir="$(dirname "$0")/outputs"
 
 sbatch \
-    --partition="cryoem" \
+    --partition="ampere" \
+    --account="cryoem:C073" \
     --job-name="$job_name" \
     --output="${out_dir}/${job_name}.out" \
     --ntasks=1 \
