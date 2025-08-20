@@ -66,12 +66,24 @@ class SAM2Train(SAM2Base):
 
     def forward(self, data: BatchedTomogramData) -> Tensor:
         """Forward pass for the SAMv2 model."""
+        C, H, W = data.tomo_batch.shape[-3:] # [H, W]
+        do_resize = (H != self.image_size or W != self.image_size)
+
+        if do_resize:
+            # Resize the input tomogram batch to the target size
+            logging.info(f"Resizing input tomogram batch from {(H, W)} to {(self.image_size, self.image_size)}.")
+            data.tomo_batch = F.interpolate(data.tomo_batch, size=(C, self.image_size, self.image_size), mode="trilinear", align_corners=False)
+        
         flat_tensor = data.batch_tensor_to_flat_tensor(data.tomo_batch) # [BxDxCxHxW] -> [[BxD]xCxHxW]
 
         # precompute image features on all slices before tracking for mask generation
         backbone_out = self.forward_image(flat_tensor)
         backbone_out = self.prepare_prompt_inputs(backbone_out, data)
         out = self.forward_tracking(backbone_out, data)
+
+        if do_resize:
+            # Resize the output to the original size
+            out = F.interpolate(out, size=(H, W), mode="bilinear", align_corners=False)
 
         return torch.sigmoid(out)
 
@@ -96,7 +108,6 @@ class SAM2Train(SAM2Base):
         backbone_out["use_pt_input"] = use_pt_input
         
         # Select initial conditioning slices
-        num_init_cond_slices = 10
         if num_init_cond_slices == 1:
             init_cond_slices = [start_slice_idx]
         else:
@@ -137,9 +148,7 @@ class SAM2Train(SAM2Base):
         # Use "frame" instead of "slice" to match with SAM2 implementation
         output_dict = {
             "cond_frame_outputs": {},
-            "cond_frame_preds": {},
             "non_cond_frame_outputs": {},
-            "non_cond_frame_preds": {},
         }
         for slice_id in processing_order:
             flat_idxs = data.index_to_flat_batch(slice_id)
@@ -158,28 +167,25 @@ class SAM2Train(SAM2Base):
                 output_dict=output_dict,
                 num_slices=num_slices,
             )
-            
-            # Get predictions from the current output
-            preds = current_out["pred_masks_high_res"]
 
             add_output_as_cond_slice = slice_id in init_cond_slices
             if add_output_as_cond_slice:
                 output_dict["cond_frame_outputs"][slice_id] = current_out
-                output_dict["cond_frame_preds"][slice_id] = preds
             else:
                 output_dict["non_cond_frame_outputs"][slice_id] = current_out
-                output_dict["non_cond_frame_preds"][slice_id] = preds
 
         if return_dict:
             return output_dict
 
         # turn 'output_dict' into a batched tensor for loss function (expects [B, D, H, W] output)
         all_slice_outputs = {}
-        all_slice_outputs.update(output_dict["cond_frame_preds"])
-        all_slice_outputs.update(output_dict["non_cond_frame_preds"])
+        all_slice_outputs.update(output_dict["cond_frame_outputs"])
+        all_slice_outputs.update(output_dict["non_cond_frame_outputs"])
+        del output_dict
         B, D, _, H, W = data.tomo_batch.shape
         total_output = torch.zeros((B, D, H, W), dtype=torch.float32)
-        for slice_id, preds in all_slice_outputs.items():
+        for slice_id, output_dict in all_slice_outputs.items():
+            preds = F.interpolate(output_dict["pred_masks"], size=(H, W), mode="bilinear", align_corners=False)
             # Ensure predictions are all in the same device
             if preds.device != total_output.device:
                 total_output = total_output.to(preds.device)
@@ -190,27 +196,19 @@ class SAM2Train(SAM2Base):
 
     def track_step(self, slice_id: int, is_init_cond_slice: bool, current_vision_feats: Tensor, current_vision_pos_embeds: Tensor, feat_sizes: Tensor, point_inputs: Optional[Tensor], mask_inputs: Optional[Tensor], output_dict: Dict[str, Any], num_slices: int) -> None:
         # Run the tracking step for the current slice
-        current_out, sam_outputs, high_res_features, pix_feat = self._track_step(slice_id, is_init_cond_slice, current_vision_feats, current_vision_pos_embeds, feat_sizes, point_inputs, mask_inputs, output_dict, num_slices, False, None)
+        current_out, sam_outputs, _, _ = self._track_step(slice_id, is_init_cond_slice, current_vision_feats, current_vision_pos_embeds, feat_sizes, point_inputs, mask_inputs, output_dict, num_slices, False, None)
 
+        # Only save essential outputs to reduce memory usage
         (
-            low_res_multimasks,
-            high_res_multimasks,
-            ious,
+            _,
+            _,
+            _,
             low_res_masks,
             high_res_masks,
             obj_ptr,
             object_score_logits,
         ) = sam_outputs
-
-        current_out["multistep_pred_masks"] = low_res_masks
-        current_out["multistep_pred_masks_high_res"] = high_res_masks
-        current_out["multistep_pred_multimasks"] = [low_res_multimasks]
-        current_out["multistep_pred_multimasks_high_res"] = [high_res_multimasks]
-        current_out["multistep_pred_ious"] = [ious]
-        current_out["multistep_point_inputs"] = [point_inputs]
-        current_out["multistep_object_score_logits"] = [object_score_logits]
         current_out["pred_masks"] = low_res_masks
-        current_out["pred_masks_high_res"] = high_res_masks
         current_out["obj_ptr"] = obj_ptr
         
         # Finally run the memory encoder on the predicted mask to encode
@@ -224,6 +222,7 @@ class SAM2Train(SAM2Base):
             object_score_logits,
             current_out,
         )
+
         return current_out
 
     def _prepare_memory_conditioned_features(
