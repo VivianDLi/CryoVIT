@@ -2,7 +2,7 @@
 
 # Check if three arguments are provided
 if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 sample group (ad, hd, campy, bacteria) model (cryovit, unet3d, sam2, or medsam) label_key (mito, microtubule, or cristae)"
+    echo "Usage: $0 sample group (ad, hd, rgc, algae, campy) model (cryovit, unet3d, sam2, or medsam) label_key (mito, microtubule, or cristae)"
     exit 1
 fi
 
@@ -34,10 +34,10 @@ case $1 in
                 ;;
             "microtubule")
                 samples=(
-                    "BACHD_microtubules"
-                    "Q109_microtubules"
-                    "Q18_microtubules"
-                    "WT_microtubules"
+                    "BACHD_Microtubules"
+                    "Q109_Microtubules"
+                    "Q18_Microtubules"
+                    "WT_Microtubules"
                 )
                 ;;
             "cristae")

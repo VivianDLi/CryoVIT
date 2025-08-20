@@ -6,7 +6,7 @@ if [ "$#" -ne 2 ] && [ "$#" -ne 4 ]; then
     exit 1
 fi
 
-if [ "$#" -eq 3 ]; then
+if [ "$#" -eq 4 ]; then
     exp_cmd="$(dirname "$0")/single_experiment_job.sh $1 $2 $3 $4"
     job_name="single_experiment_${1}_${2}_${3}"
 else
@@ -24,5 +24,5 @@ sbatch \
     --cpus-per-task=8 \
     --mem-per-cpu=6gb \
     --gres=gpu:a100:1 \
-    --time=02:00:00 \
+    --time=04:00:00 \
     --wrap="$exp_cmd"

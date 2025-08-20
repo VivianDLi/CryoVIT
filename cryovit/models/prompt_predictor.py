@@ -17,7 +17,7 @@ class PromptPredictor(nn.Module):
     This class is responsible for generating prompts based on the input data and model configuration.
     """
     
-    def __init__(self, prompt_encoder, embed_dim: int = 256, num_heads: int = 8, depth: int = 3, channel_dims=[256, 64, 32], mlp_dim: int = 2048, activation: nn.Module = nn.GELU):
+    def __init__(self, prompt_encoder, embed_dim: int = 256, num_heads: int = 4, depth: int = 2, channel_dims=[256, 64], mlp_dim: int = 1024, activation: nn.Module = nn.GELU):
         super().__init__()
         assert len(channel_dims) == depth, "Number of channel dimensions for image features must match the depth of the model."
         
@@ -26,7 +26,8 @@ class PromptPredictor(nn.Module):
         self.num_heads = num_heads
         self.depth = depth
         self.mlp_dim = mlp_dim
-        self.scale_factor = 4  # Scale factor for mask prediction since the features are downsampled by 4x in the original SAM2 implementation
+        self.scale_factor = 4 * 2**(3 - depth)  # Scale factor for mask prediction
+        # Original SAM2 has 4x patch embedding + 2x for each image embedding layer (3 in total)
 
         # Initialize the position embeddings for image and prompt
         self.image_pos = PositionEmbedding2d(embed_dim)
@@ -108,20 +109,20 @@ class PositionEmbedding1d(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         # x is expected to be of shape (B, N, C)
+        B, N, C = x.shape
         
         if self.cached_pos is not None and self.cached_pos.shape[1] == x.shape[1]:
-            return self.cached_pos
+            return self.cached_pos.repeat(B, 1, 1)  # Return cached positions if available
         
         self.cached_pos = None
-        B, N, C = x.shape
         pos_x = torch.arange(N, device=x.device, dtype=self.inv_freqs.dtype)
         sincos_x = torch.einsum("i,j->ij", pos_x, self.inv_freqs)
         emb_x = torch.stack((sincos_x.sin(), sincos_x.cos()), dim=-1).flatten(-2, -1)  # Shape: (N, C)
         # Save to cached_pos
         emb = torch.zeros((N, self.embed_dim), device=x.device, dtype=x.dtype)
         emb[:, :self.embed_dim] = emb_x
-        self.cached_pos = emb[None, :, :C].repeat(B, 1, 1)  # Shape: (B, N, C)
-        return self.cached_pos
+        self.cached_pos = emb[None, :, :C]  # Shape: (1, N, C)
+        return self.cached_pos.repeat(B, 1, 1)  # Repeat for batch size B
         
 
 class BoxPredictor(nn.Module):
@@ -141,9 +142,10 @@ class BoxPredictor(nn.Module):
         return x, labels
     
 class MaskPredictor(nn.Module):
-    def __init__(self, in_channels: int, hidden_channels: int = 64, num_layers: int = 2, scale_factor: int = 4, dropout: float = 0.1, use_batch_norm: bool = False):
+    def __init__(self, in_channels: int, hidden_channels: int = 64, num_layers: int = 2, scale_factor: int = 4, dropout: float = 0.1, threshold: float = 0.5,use_batch_norm: bool = False):
         super().__init__()
         self.scale_factor = scale_factor
+        self.threshold = threshold
         
         self.layers = nn.ModuleList([nn.Conv2d(in_channels, hidden_channels, kernel_size=3, stride=1, padding=1, bias=not use_batch_norm)] + [
             nn.Conv2d(hidden_channels, hidden_channels, kernel_size=3, stride=1, padding=1, bias=not use_batch_norm)
@@ -182,4 +184,6 @@ class MaskPredictor(nn.Module):
         x = self.out(x)
         # Upsample to desired size
         x = F.interpolate(x, scale_factor=self.scale_factor, mode='bilinear', align_corners=False)
+        x = torch.sigmoid(x)  # Apply sigmoid to get probabilities
+        x = (x > self.threshold).to(dtype=torch.bool)  # Convert to binary mask
         return x

@@ -98,10 +98,19 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
         for logger in trainer.loggers:
             logger.log_hyperparams(hparams)
     
-    try:
-        model.forward = torch.compile(model.forward)
-    except Exception as e:
-        logging.warning(f"Unable to compile forward pass: {e}")
+    # Base SAM2 only supports image encoder compilation
+    if cfg.model._target_ == "cryovit.models.SAM2":
+        logging.info("Compiling image encoder for SAM2 model.")
+        try:
+            model.compile()
+        except Exception as e:
+            logging.warning(f"Unable to compile image encoder for SAM2: {e}")
+    else:
+        logging.info("Compiling model forward pass.")
+        try:
+            model.forward = torch.compile(model.forward)
+        except Exception as e:
+            logging.warning(f"Unable to compile forward pass: {e}")
 
     logging.info("Starting training.")
     if cfg.resume_ckpt and ckpt_path.exists():

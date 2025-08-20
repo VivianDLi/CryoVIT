@@ -75,6 +75,7 @@ class BatchedTomogramData:
     Attributes:
         tomo_batch: A [[BxDxCxHxW] tensor containing the tomogram data for each slice in the batch, where D is a tomogram's depth, and B is the number of tomograms in the batch. The D dimension is padded to the max in the batch.
         tomo_sizes: A [B] tensor containing the size (D) of each tomogram in the batch.
+        num_total_slices: An integer containing the total number of slices in the batch.
         labels: A [[BxDxHxW] tensor containing the binary labels for segmentation objects in the batch.
         aux_data: A dictionary containing additional data as a list of values, such as raw data input for dino_features.
         metadata: An instance of BatchedTomogramMetadata containing metadata about the batch and the tomograms inside.
@@ -84,6 +85,7 @@ class BatchedTomogramData:
     tomo_sizes: torch.IntTensor
     labels: torch.BoolTensor
     metadata: BatchedTomogramMetadata
+    num_total_slices: int
     aux_data: Optional[Dict[str, List[Any]]] = None
     
     def __post_init__(self):
@@ -114,11 +116,6 @@ class BatchedTomogramData:
     def max_slices(self) -> int:
         """Returns the maximum number of slices in the batch."""
         return self.tomo_batch.shape[1]
-    
-    @property
-    def total_slices(self) -> int:
-        """Returns the total number of slices in the batch."""
-        return torch.sum(self.tomo_sizes).item()
 
     def index_to_slice_batch(self, idx: int) -> Tuple[torch.LongTensor, torch.FloatTensor]:
         """Returns a subsection of tomo_batch corresponding to a certain slice index and their batch indices, ignoring tomograms in the batch that are smaller than the slice index."""

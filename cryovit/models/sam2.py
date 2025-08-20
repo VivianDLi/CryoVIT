@@ -1,6 +1,6 @@
 # """SAMv2 model for 2D/3D tomogram segmentation, using the existing library to support training and fine-tuning."""
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 import logging
 
 from hydra.utils import instantiate
@@ -8,8 +8,10 @@ from omegaconf import OmegaConf
 import torch
 from torch import Tensor
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from sam2.modeling.sam2_base import SAM2Base
+from sam2.modeling.backbones.hieradet import Hiera
 from sam2.modeling.sam2_utils import select_closest_cond_frames, get_1d_sine_pe
 
 from cryovit.models.base_model import BaseModel
@@ -17,8 +19,7 @@ from cryovit.models.prompt_predictor import PromptPredictor
 from cryovit.config import BaseModel as BaseModelConfig
 from cryovit.types import BatchedTomogramData
 
-sam2_model = ("facebook/sam2.1-hiera-large", {"config": "sam2.1_hiera_l.yaml", "weights": "sam2.1_hiera_large.pt"}) # the large variant of SAMv2.1
-sam2_small_model = ("facebook/sam2.1-hiera-tiny") # for creating model for medical sam2
+sam2_model = ("facebook/sam2.1-hiera-tiny", {"config": "sam2.1_hiera_t.yaml", "weights": "sam2.1_hiera_tiny.pt"}) # the tiny variant of SAMv2.1
 medical_sam2_model = ("wanglab/MedSAM2", {"config": "sam2.1_hiera_t.yaml", "weights": "MedSAM2_latest.pt"}) # fine-tuned on medical data SAMv2
 
 class SAM2(BaseModel):
@@ -37,6 +38,10 @@ class SAM2(BaseModel):
         if data.tomo_batch.size(2) == 1:
             data.tomo_batch = data.tomo_batch.expand(-1, -1, 3, -1, -1)
         return self.model(data)
+    
+    def compile(self) -> None:
+        """Compiles the model image encoder for training."""
+        self.model.image_encoder.forward = torch.compile(self.model.image_encoder.forward)
 
 class SAM2Train(SAM2Base):
     """SAMv2 model implementation."""
@@ -106,9 +111,8 @@ class SAM2Train(SAM2Base):
         # Prepare mask and point inputs for each initial conditioning slice
         backbone_out["mask_inputs_per_slice"] = {}
         backbone_out["point_inputs_per_slice"] = {}
-        B = data.total_slices
-        prompts = self.learnable_prompts.repeat(B, 1, 1).to(data.tomo_batch.device)  # [B, num_learnable_prompts, embed_dim]
-        flat_box_points, flat_box_labels, flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"], prompts) # flat tensor form
+        prompt_tokens = self.learnable_prompts.repeat(data.num_total_slices, 1, 1).to(data.tomo_batch.device)  # Repeat prompts for each batch
+        flat_box_points, flat_box_labels, flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"], prompt_tokens) # flat tensor form
         for n in init_cond_slices:
             idxs = data.index_to_flat_batch(n)
             if not use_pt_input:
@@ -401,6 +405,49 @@ class SAM2Train(SAM2Base):
         pix_feat_with_mem = pix_feat_with_mem.permute(1, 2, 0).view(B, C, H, W)
         return pix_feat_with_mem
 
+class CustomHiera(Hiera):
+    """Custom implementaiton of Hiera backbone for SAM2 modifying positional encoding for arbitrary input sizes."""
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if self.q_stride is not None:
+            num_pool_blocks = len(self.q_pool_blocks)
+            self.scale_factor = [stride**num_pool_blocks for stride in self.q_stride]
+
+    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
+        x = self.patch_embed(x)
+        # x: (B, H, W, C)
+
+        # Add padding based on scale factor
+        if self.q_stride is not None:
+            H, W = x.shape[1:3]
+            pad_h = (self.scale_factor[0] - H % self.scale_factor[0]) % self.scale_factor[0]
+            pad_w = (self.scale_factor[1] - W % self.scale_factor[1]) % self.scale_factor[1]
+            if pad_h > 0 or pad_w > 0:
+                x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h), mode='constant', value=0)
+
+        # Add pos embed
+        x = x + self._get_pos_embed(x.shape[1:3])
+
+        outputs = []
+        for i, blk in enumerate(self.blocks):
+            x = blk(x)
+            if (i == self.stage_ends[-1]) or (
+                i in self.stage_ends and self.return_interm_layers
+            ):
+                feats = x.permute(0, 3, 1, 2)
+                outputs.append(feats)
+
+        return outputs
+
+    def _get_pos_embed(self, hw: Tuple[int, int]) -> torch.Tensor:
+        h, w = hw
+        window_embed = self.pos_embed_window
+        pos_embed = F.interpolate(self.pos_embed, size=(h, w), mode="bicubic")
+        tiled_window_embed = window_embed.tile([x // y for x, y in zip(pos_embed.shape, window_embed.shape)])
+        pos_embed = pos_embed + F.interpolate(tiled_window_embed, size=(h, w), mode="bicubic")
+        pos_embed = pos_embed.permute(0, 2, 3, 1)
+        return pos_embed
+
 #### Model Creation and Loading ####
 
 def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
@@ -413,7 +460,8 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
     model_cfg_path = file_paths["config"]
     model_cfg = OmegaConf.load(model_cfg_path)["model"]
     model_cfg._target_ = "cryovit.models.sam2.SAM2Train" # Use cryovit SAM2 as target
-    model_cfg.image_size = 512 # Set image size to 512 (crop size for training)
+    model_cfg.image_size = 256 # Set image size to 512 (crop size for training)
+    model_cfg.image_encoder.trunk._target_ = "cryovit.models.sam2.CustomHiera" # Use custom Hiera backbone
     config = OmegaConf.merge(model_cfg, cfg.custom_kwargs)
     
     model = instantiate(cfg, sam_model=config)
@@ -440,8 +488,7 @@ def _download_model_weights(sam_dir: Path) -> Dict[str, Dict[str, Path]]:
     
     # Download Medical-SAMv2
     medsam_repo, medsam_config = medical_sam2_model
-    if not ((sam_dir / medsam_config["weights"]).exists() and (sam_dir / medsam_config["config"]).exists()): 
-        snapshot_download(repo_id = sam2_small_model, repo_type="model", local_dir = sam_dir)
+    if not ((sam_dir / medsam_config["weights"]).exists() and (sam_dir / medsam_config["config"]).exists()):
         snapshot_download(repo_id = medsam_repo, repo_type="model", local_dir=sam_dir)
     medsam_config = {k: sam_dir / v for k, v in medsam_config.items()}
     

@@ -111,7 +111,7 @@ class BaseDataModule(LightningDataModule, ABC):
         records = self.predict_df()
         if records.empty:
             raise ValueError("No prediction data found in the provided split file.")
-        dataset = self.dataset_fn(records, train=False)
+        dataset = self.dataset_fn(records, train=False, predict=True)
         return self.dataloader_fn(dataset, shuffle=False, collate_fn=collate_fn)
 
 def collate_fn(batch: List[TomogramData]) -> BatchedTomogramData:
@@ -124,10 +124,12 @@ def collate_fn(batch: List[TomogramData]) -> BatchedTomogramData:
     use_splits = True
     
     tomo_sizes = torch.empty(len(batch), dtype=torch.int)
+    num_slices = 0
     # Get tomogram sizes
     for tomo_idx, tomo_data in enumerate(batch):
         D = tomo_data.data.shape[-3]
         tomo_sizes[tomo_idx] = D
+        num_slices += D
     
     # Initialize data arrays
     max_size = tomo_sizes.max().item()
@@ -183,5 +185,6 @@ def collate_fn(batch: List[TomogramData]) -> BatchedTomogramData:
         tomo_sizes=tomo_sizes,
         labels=labels,
         aux_data=aux_data,
-        metadata=metadata
+        metadata=metadata,
+        num_total_slices=num_slices,
     )
