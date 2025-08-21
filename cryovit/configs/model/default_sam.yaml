@@ -2,7 +2,6 @@ _target_: cryovit.models.SAM2
 input_key: data
 
 custom_kwargs:
-  prob_use_pt_input: [0.5, 0]
   num_init_cond_slices: [1, 1]
   rand_init_cond_slices: [True, False]
   num_learnable_prompt_tokens: 10

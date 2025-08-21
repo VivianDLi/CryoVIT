@@ -46,10 +46,9 @@ class SAM2(BaseModel):
 class SAM2Train(SAM2Base):
     """SAMv2 model implementation."""
 
-    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, prob_use_pt_input: Tuple[float, float] = (0.5, 0), num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), num_learnable_prompt_tokens: int = 10, freeze_image_encoder: bool = True, freeze_prompt_encoder: bool = True, freeze_memory: bool = True, **kwargs) -> None:
+    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), num_learnable_prompt_tokens: int = 10, freeze_image_encoder: bool = True, freeze_prompt_encoder: bool = True, freeze_memory: bool = True, **kwargs) -> None:
         """Initializes the CryoVIT model with specific convolutional and synthesis blocks."""
         super(SAM2Train, self).__init__(image_encoder, memory_attention, memory_encoder, **kwargs)
-        self.prob_use_pt_input = prob_use_pt_input
         self.num_init_cond_slices = num_init_cond_slices
         self.rand_init_cond_slices = rand_init_cond_slices
 
@@ -78,7 +77,6 @@ class SAM2Train(SAM2Base):
 
         if do_resize:
             # Resize the input tomogram batch to the target size
-            logging.info(f"Resizing input tomogram batch from {(H, W)} to {(self.image_size, self.image_size)}.")
             data.tomo_batch = F.interpolate(data.tomo_batch, size=(C, self.image_size, self.image_size), mode="trilinear", align_corners=False)
         
         flat_tensor = data.batch_tensor_to_flat_tensor(data.tomo_batch) # [BxDxCxHxW] -> [[BxD]xCxHxW]
@@ -89,7 +87,7 @@ class SAM2Train(SAM2Base):
         out = self.forward_tracking(backbone_out, data)
 
         if do_resize:
-            # Resize the output to the original size
+            # Upsample the output to the original size
             out = F.interpolate(out, size=(H, W), mode="bilinear", align_corners=False)
 
         return torch.sigmoid(out)
@@ -100,19 +98,15 @@ class SAM2Train(SAM2Base):
         
         # Setup prompt parameters
         if self.training:
-            prob_use_pt_input = self.prob_use_pt_input[0]
             num_init_cond_slices = self.num_init_cond_slices[0]
             rand_init_cond_slices = self.rand_init_cond_slices[0]
         else:
-            prob_use_pt_input = self.prob_use_pt_input[1]
             num_init_cond_slices = self.num_init_cond_slices[1]
             rand_init_cond_slices = self.rand_init_cond_slices[1]
         assert num_init_cond_slices >= 1, "Number of initial conditioning slices must be at least 1."
         if rand_init_cond_slices and num_init_cond_slices > 1:
             # Randomly select number of initial conditioning slices
             num_init_cond_slices = np.random.randint(1, num_init_cond_slices + 1)
-        use_pt_input = np.random.rand() < prob_use_pt_input
-        backbone_out["use_pt_input"] = use_pt_input
         
         # Select initial conditioning slices
         if num_init_cond_slices == 1:
@@ -133,10 +127,8 @@ class SAM2Train(SAM2Base):
         flat_box_points, flat_box_labels, flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"], prompt_tokens) # flat tensor form
         for n in init_cond_slices:
             idxs = data.index_to_flat_batch(n)
-            if not use_pt_input:
-                backbone_out["mask_inputs_per_slice"][n] = flat_mask_prompts[idxs]
-            else:
-                backbone_out["point_inputs_per_slice"][n] = {"point_coords": flat_box_points[idxs], "point_labels": flat_box_labels[idxs]}
+            backbone_out["mask_inputs_per_slice"][n] = flat_mask_prompts[idxs]
+            backbone_out["point_inputs_per_slice"][n] = {"point_coords": flat_box_points[idxs], "point_labels": flat_box_labels[idxs]}
 
         return backbone_out
 
@@ -192,7 +184,8 @@ class SAM2Train(SAM2Base):
         B, D, _, H, W = data.tomo_batch.shape
         total_output = torch.zeros((B, D, H, W), dtype=torch.float32)
         for slice_id, output_dict in all_slice_outputs.items():
-            preds = F.interpolate(output_dict["pred_masks"], size=(H, W), mode="bilinear", align_corners=False)
+            # Upsample to original size (from low-res masks)
+            preds = F.interpolate(output_dict["pred_masks"], scale_factor=4, mode="bilinear", align_corners=False)
             # Ensure predictions are all in the same device
             if preds.device != total_output.device:
                 total_output = total_output.to(preds.device)
