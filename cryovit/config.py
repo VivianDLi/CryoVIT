@@ -44,6 +44,7 @@ class Sample(Enum):
     
 
 samples: List[str] = [sample.name for sample in Sample]
+hd_samples: List[str] = ["BACHD", "dN17_BACHD", "Q109", "Q18", "Q20", "Q53", "Q53_KD", "Q66", "Q66_GRFS1", "Q66_KD", "WT"]
 tomogram_exts: List[str] = [".hdf", ".mrc"]
 
 

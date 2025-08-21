@@ -4,7 +4,7 @@ from typing import List, Optional, Union
 
 import pandas as pd
 
-from cryovit.config import samples
+from cryovit.config import hd_samples
 from cryovit.datamodules.base_datamodule import BaseDataModule
 
 
@@ -43,8 +43,8 @@ class FractionalSampleDataModule(BaseDataModule):
         
         return self.record_df[
             (self.record_df[self.split_key].isin(training_splits))
-            & (self.record_df["sample"] != self.sample)
-            & (self.record_df["sample"].isin(samples))
+            & ~(self.record_df["sample"].isin(self.sample))
+            & (self.record_df["sample"].isin(hd_samples))
         ][["sample", "tomo_name"]]
 
     def val_df(self) -> pd.DataFrame:
@@ -61,7 +61,7 @@ class FractionalSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
-        return self.record_df[self.record_df["sample"] == self.sample][["sample", "tomo_name"]]
-    
+        return self.record_df[self.record_df["sample"].isin(self.sample)][["sample", "tomo_name"]]
+
     def predict_df(self) -> pd.DataFrame:
         raise NotImplementedError
