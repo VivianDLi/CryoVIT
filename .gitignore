@@ -3,11 +3,11 @@ debug/*
 experiments/*
 cryovit_dataset/*
 no_cancer/*
-outputs/*
-multirun/*
+outputs
+multirun
 
-slurm_scripts/outputs/*
-slurm_scripts/nc_outputs/*
+slurm_scripts/outputs
+slurm_scripts/nc_outputs
 
 wandb/
 
