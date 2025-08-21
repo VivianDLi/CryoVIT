@@ -17,7 +17,7 @@ class PromptPredictor(nn.Module):
     This class is responsible for generating prompts based on the input data and model configuration.
     """
     
-    def __init__(self, prompt_encoder, embed_dim: int = 256, num_heads: int = 4, depth: int = 2, channel_dims=[256, 64], mlp_dim: int = 1024, activation: nn.Module = nn.GELU):
+    def __init__(self, prompt_encoder, embed_dim: int = 256, num_heads: int = 8, depth: int = 3, channel_dims=[256, 64, 32], mlp_dim: int = 2048, activation: nn.Module = nn.GELU):
         super().__init__()
         assert len(channel_dims) == depth, "Number of channel dimensions for image features must match the depth of the model."
         
@@ -180,7 +180,6 @@ class MaskPredictor(nn.Module):
             x = F.relu(x)
             if self.dropout is not None:
                 x = self.dropout(x)
-            x = F.relu(x)
         x = self.out(x)
         # Upsample to desired size
         x = F.interpolate(x, scale_factor=self.scale_factor, mode='bilinear', align_corners=False)

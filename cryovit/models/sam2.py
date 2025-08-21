@@ -46,7 +46,7 @@ class SAM2(BaseModel):
 class SAM2Train(SAM2Base):
     """SAMv2 model implementation."""
 
-    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, prob_use_pt_input: Tuple[float, float] = (0.5, 0), num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), num_learnable_prompt_tokens: int = 10, freeze_image_encoder: bool = True, freeze_prompt_encoder: bool = True, **kwargs) -> None:
+    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, prob_use_pt_input: Tuple[float, float] = (0.5, 0), num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), num_learnable_prompt_tokens: int = 10, freeze_image_encoder: bool = True, freeze_prompt_encoder: bool = True, freeze_memory: bool = True, **kwargs) -> None:
         """Initializes the CryoVIT model with specific convolutional and synthesis blocks."""
         super(SAM2Train, self).__init__(image_encoder, memory_attention, memory_encoder, **kwargs)
         self.prob_use_pt_input = prob_use_pt_input
@@ -56,12 +56,19 @@ class SAM2Train(SAM2Base):
         self.prompt_predictor = PromptPredictor(self.sam_prompt_encoder)
         self.learnable_prompts = torch.nn.Parameter(torch.randn(1, num_learnable_prompt_tokens, 256) / np.sqrt(256))
 
+        # Only fine-tune on the prompt predictor and the mask decoder
         if freeze_image_encoder:
             for p in self.image_encoder.parameters():
                 p.requires_grad = False
                 
         if freeze_prompt_encoder:
             for p in self.sam_prompt_encoder.parameters():
+                p.requires_grad = False
+                
+        if freeze_memory:
+            for p in self.memory_encoder.parameters():
+                p.requires_grad = False
+            for p in self.memory_attention.parameters():
                 p.requires_grad = False
 
     def forward(self, data: BatchedTomogramData) -> Tensor:
