@@ -79,7 +79,7 @@ class SAM2Train(SAM2Base):
             # Resize the input tomogram batch to the target size
             data.tomo_batch = F.interpolate(data.tomo_batch, size=(C, self.image_size, self.image_size), mode="trilinear", align_corners=False)
         
-        flat_tensor = data.batch_tensor_to_flat_tensor(data.tomo_batch) # [BxDxCxHxW] -> [[BxD]xCxHxW]
+        flat_tensor = data.flat_tomo_batch # [BxDxCxHxW] -> [[BxD]xCxHxW]
 
         # precompute image features on all slices before tracking for mask generation
         backbone_out = self.forward_image(flat_tensor)
@@ -94,7 +94,7 @@ class SAM2Train(SAM2Base):
 
     def prepare_prompt_inputs(self, backbone_out: Dict[str, Any], data: BatchedTomogramData, start_slice_idx: int = 0) -> Dict[str, Any]:
         """Prepare a grid-point mask for automatic prompting or an input mask from labeled data."""
-        backbone_out["num_slices"] = data.max_slices
+        backbone_out["num_slices"] = data.num_slices
         
         # Setup prompt parameters
         if self.training:
@@ -123,12 +123,10 @@ class SAM2Train(SAM2Base):
         # Prepare mask and point inputs for each initial conditioning slice
         backbone_out["mask_inputs_per_slice"] = {}
         backbone_out["point_inputs_per_slice"] = {}
-        prompt_tokens = self.learnable_prompts.repeat(data.num_total_slices, 1, 1).to(data.tomo_batch.device)  # Repeat prompts for each batch
-        flat_box_points, flat_box_labels, flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"], prompt_tokens) # flat tensor form
+        flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"]) # flat tensor form
         for n in init_cond_slices:
             idxs = data.index_to_flat_batch(n)
             backbone_out["mask_inputs_per_slice"][n] = flat_mask_prompts[idxs]
-            backbone_out["point_inputs_per_slice"][n] = {"point_coords": flat_box_points[idxs], "point_labels": flat_box_labels[idxs]}
 
         return backbone_out
 
@@ -180,17 +178,12 @@ class SAM2Train(SAM2Base):
         all_slice_outputs = {}
         all_slice_outputs.update(output_dict["cond_frame_outputs"])
         all_slice_outputs.update(output_dict["non_cond_frame_outputs"])
-        del output_dict
-        B, D, _, H, W = data.tomo_batch.shape
-        total_output = torch.zeros((B, D, H, W), dtype=torch.float32)
+        total_output = []
         for slice_id, output_dict in all_slice_outputs.items():
             # Upsample to original size (from low-res masks)
             preds = F.interpolate(output_dict["pred_masks"], scale_factor=4, mode="bilinear", align_corners=False)
-            # Ensure predictions are all in the same device
-            if preds.device != total_output.device:
-                total_output = total_output.to(preds.device)
-            batch_idxs = data.index_to_slice_batch(slice_id)[0]
-            total_output[batch_idxs, slice_id, ...] = preds
+            total_output.append(preds)
+        total_output = torch.cat(total_output, dim=1) # [B, D, H, W]
 
         return total_output
 
@@ -404,49 +397,6 @@ class SAM2Train(SAM2Base):
         pix_feat_with_mem = pix_feat_with_mem.permute(1, 2, 0).view(B, C, H, W)
         return pix_feat_with_mem
 
-class CustomHiera(Hiera):
-    """Custom implementaiton of Hiera backbone for SAM2 modifying positional encoding for arbitrary input sizes."""
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.q_stride is not None:
-            num_pool_blocks = len(self.q_pool_blocks)
-            self.scale_factor = [stride**num_pool_blocks for stride in self.q_stride]
-
-    def forward(self, x: torch.Tensor) -> List[torch.Tensor]:
-        x = self.patch_embed(x)
-        # x: (B, H, W, C)
-
-        # Add padding based on scale factor
-        if self.q_stride is not None:
-            H, W = x.shape[1:3]
-            pad_h = (self.scale_factor[0] - H % self.scale_factor[0]) % self.scale_factor[0]
-            pad_w = (self.scale_factor[1] - W % self.scale_factor[1]) % self.scale_factor[1]
-            if pad_h > 0 or pad_w > 0:
-                x = F.pad(x, (0, 0, 0, pad_w, 0, pad_h), mode='constant', value=0)
-
-        # Add pos embed
-        x = x + self._get_pos_embed(x.shape[1:3])
-
-        outputs = []
-        for i, blk in enumerate(self.blocks):
-            x = blk(x)
-            if (i == self.stage_ends[-1]) or (
-                i in self.stage_ends and self.return_interm_layers
-            ):
-                feats = x.permute(0, 3, 1, 2)
-                outputs.append(feats)
-
-        return outputs
-
-    def _get_pos_embed(self, hw: Tuple[int, int]) -> torch.Tensor:
-        h, w = hw
-        window_embed = self.pos_embed_window
-        pos_embed = F.interpolate(self.pos_embed, size=(h, w), mode="bicubic")
-        tiled_window_embed = window_embed.tile([x // y for x, y in zip(pos_embed.shape, window_embed.shape)])
-        pos_embed = pos_embed + F.interpolate(tiled_window_embed, size=(h, w), mode="bicubic")
-        pos_embed = pos_embed.permute(0, 2, 3, 1)
-        return pos_embed
-
 #### Model Creation and Loading ####
 
 def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
@@ -459,8 +409,7 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
     model_cfg_path = file_paths["config"]
     model_cfg = OmegaConf.load(model_cfg_path)["model"]
     model_cfg._target_ = "cryovit.models.sam2.SAM2Train" # Use cryovit SAM2 as target
-    model_cfg.image_size = 512 # Set image size to 512 (crop size for training)
-    model_cfg.image_encoder.trunk._target_ = "cryovit.models.sam2.CustomHiera" # Use custom Hiera backbone
+    model_cfg.image_size = 256 # Set image size to 512 (crop size for training)
     config = OmegaConf.merge(model_cfg, cfg.custom_kwargs)
     
     model = instantiate(cfg, sam_model=config)
@@ -473,6 +422,7 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
     if unexpected_keys:
         logging.error(unexpected_keys)
         raise RuntimeError()
+    model.model.replace_decoder()
 
     return model
 

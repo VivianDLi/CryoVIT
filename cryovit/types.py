@@ -43,7 +43,7 @@ class TomogramData:
     label: torch.BoolTensor
     aux_data: Optional[Dict[str, Any]] = None
 
-@dataclass
+@tensorclass
 class BatchedTomogramMetadata:
     """
     This class represents metadata about a batch of tomograms.
@@ -67,7 +67,7 @@ class BatchedTomogramMetadata:
         return samples, names
 
 
-@dataclass
+@tensorclass
 class BatchedTomogramData:
     """
     This class represents a batch of tomograms with associated annotations.
@@ -85,69 +85,35 @@ class BatchedTomogramData:
     tomo_sizes: torch.IntTensor
     labels: torch.BoolTensor
     metadata: BatchedTomogramMetadata
-    num_total_slices: int
+    min_slices: int
     aux_data: Optional[Dict[str, List[Any]]] = None
-    
-    def __post_init__(self):
-        """Disable gradient tracking for metadata parameters."""
-        self.tomo_sizes.requires_grad = False
-        for value in self.aux_data.values():
-            if isinstance(value, torch.Tensor):
-                value.requires_grad = False
-            elif isinstance(value, list):
-                for v in value:
-                    if isinstance(v, torch.Tensor):
-                        v.requires_grad = False
-        self.metadata.unique_id.requires_grad = False
-        if self.metadata.split_id is not None:
-            self.metadata.split_id.requires_grad = False
     
     @property
     def num_tomos(self) -> int:
         """Returns the number of tomograms in the batch."""
         return self.tomo_batch.shape[0]
-    
-    @property
-    def min_slices(self) -> int:
-        """Returns the minimum number of slices in the batch."""
-        return torch.min(self.tomo_sizes).item()
 
     @property
-    def max_slices(self) -> int:
+    def num_slices(self) -> int:
         """Returns the maximum number of slices in the batch."""
         return self.tomo_batch.shape[1]
-
-    def index_to_slice_batch(self, idx: int) -> Tuple[torch.LongTensor, torch.FloatTensor]:
-        """Returns a subsection of tomo_batch corresponding to a certain slice index and their batch indices, ignoring tomograms in the batch that are smaller than the slice index."""
-        # Get index limits of tomograms that are large enough
-        if idx >= self.max_slices:
-            raise IndexError(f"Slice index {idx} is out of bounds for the maximum number of slices {self.max_slices}.")
-        batch_idxs = torch.argwhere(self.tomo_sizes > idx).long()
-        return batch_idxs, self.tomo_batch[batch_idxs, idx, :, :, :] # a B' and B'xCxHxW tensor
     
     def index_to_flat_batch(self, idx: int) -> torch.LongTensor:
         """Returns a [BxD] tensor containing the indices corresponding to a certain slice in a flat batch tensor."""
-        if idx >= self.max_slices:
+        if idx >= self.num_slices:
             raise IndexError(f"Slice index {idx} is out of bounds for the maximum number of slices {self.max_slices}.")
         batch_idxs = torch.argwhere(self.tomo_sizes > idx).long()
         batch_sizes = self.tomo_sizes[batch_idxs].flatten()
         batch_ll = torch.cumsum(batch_sizes, dim=0) - batch_sizes
         slice_idxs = batch_ll + idx
-        return slice_idxs.to(dtype=torch.long)
-
+        return slice_idxs
+    
     @property
-    def flat_tensor_unpad_index(self) -> torch.LongTensor:
-        """Returns a [[BxD]] tensor containing indices for removing padding from a [[BxD]xCxHxW] tensor."""
-        D = self.tomo_batch.size(dim=1)
-        return torch.concat([torch.arange(self.tomo_sizes[b]) + D * b for b in range(self.num_tomos)])
-    
-    def batch_tensor_to_flat_tensor(self, batch_tensor: torch.Tensor) -> torch.Tensor:
+    def flat_tomo_batch(self) -> torch.Tensor:
         """Returns a [[BxD]xCxHxW] tensor from a [BxDxCxHxW] tensor (C is optional)."""
-        flat_tensor = batch_tensor.reshape(-1, *batch_tensor.shape[2:])
-        unpad_idx = self.flat_tensor_unpad_index
-        return flat_tensor[unpad_idx]
-        
-    
+        return self.tomo_batch.reshape(-1, *self.tomo_batch.shape[2:])
+
+
 @dataclass
 class BatchedModelResult:
     """

@@ -124,12 +124,12 @@ def collate_fn(batch: List[TomogramData]) -> BatchedTomogramData:
     use_splits = True
     
     tomo_sizes = torch.empty(len(batch), dtype=torch.int)
-    num_slices = 0
+    min_slices = float("inf")
     # Get tomogram sizes
     for tomo_idx, tomo_data in enumerate(batch):
         D = tomo_data.data.shape[-3]
         tomo_sizes[tomo_idx] = D
-        num_slices += D
+        min_slices = min(min_slices, D)
     
     # Initialize data arrays
     max_size = tomo_sizes.max().item()
@@ -186,5 +186,5 @@ def collate_fn(batch: List[TomogramData]) -> BatchedTomogramData:
         labels=labels,
         aux_data=aux_data,
         metadata=metadata,
-        num_total_slices=num_slices,
+        min_slices=min_slices,
     )
