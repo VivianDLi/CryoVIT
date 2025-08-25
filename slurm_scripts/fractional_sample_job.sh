@@ -15,7 +15,7 @@ env_dir=/sdf/home/v/vdl21/projects/libs/
 $env_dir/cryovit_env/bin/python -m \
     cryovit.train_model \
     model=$model \
-    name="fractional_${sample}_${model}_${label_key}" \
+    name="fractional_${model}_${label_key}" \
     label_key=$label_key \
     datamodule=fractional_loo \
     datamodule.sample=$sample \

@@ -18,7 +18,8 @@ from numpy.typing import NDArray
 from rich.progress import track
 
 from cryovit.config import DinoFeaturesConfig, BaseDataModule, samples, tomogram_exts
-from cryovit.types import DinoFeaturesData, FloatTomogramData, IntTomogramData, LabelData
+from cryovit.types import DinoFeaturesData, IntTomogramData, LabelData
+from cryovit.visualization.dino_pca import export_pca
 
 torch.set_float32_matmul_precision("high")  # ensures tensor cores are used
 dino_model = ("facebookresearch/dinov2", "dinov2_vitg14_reg")  # the giant variant of DINOv2
@@ -81,68 +82,6 @@ def _save_data(
             else:
                 fh.create_dataset("data", data=data[key], shape=data[key].shape, dtype=data[key].dtype, compression="gzip")
         fh.create_dataset("dino_features", data=features, shape=features.shape, dtype=features.dtype)
-        
-
-def _calculate_pca(features: DinoFeaturesData) -> FloatTomogramData:
-    features = features.astype(np.float32) # PCA expects float32
-    x = features.transpose((1, 2, 3, 0))
-    x = x.reshape((-1, x.shape[-1])) # N, C
-    # Reduce dimensionality to 3 colors
-    pca = PCA(n_components=1024)
-    x = pca.fit_transform(x)
-    umap = UMAP(n_components=3, verbose=True, n_jobs=16)
-    umap.fit(x)
-    # Upscale features
-    features = F.interpolate(torch.from_numpy(features), scale_factor=2, mode="bicubic")
-    D, W, H = features.shape[1:] # D, W, H
-    features = features.permute(1, 2, 3, 0).contiguous()
-    features = features.view(-1, features.shape[-1]).numpy()
-    features = pca.transform(features)
-    features = umap.transform(features)
-    return features.reshape(D, W, H, 3)
-
-def _color_features(features: FloatTomogramData, alpha: float = 0.0) -> IntTomogramData:
-    # Normalize
-    features = features - features.min(axis=(0, 1, 2))
-    features = features / features.max(axis= (0, 1, 2))
-    
-    # Normalize colors
-    hsv = rgb_to_hsv(features)
-    hsv[..., 1] = 0.9
-    hsv[..., 2] = 0.75
-    hsv[..., 0] = (alpha + hsv[..., 0]) % 1.0 # alpha = 0
-    rgb = hsv_to_rgb(hsv)
-    rgb = (255 * rgb).astype(np.uint8)
-    
-    # Upscale to full image size
-    rgb = np.repeat(rgb, 8, axis=1)
-    rgb = np.repeat(rgb, 8, axis=2)
-    return rgb
-
-def _export_pca(
-    data: FloatTomogramData,
-    features: FloatTomogramData,
-    tomo_name: str,
-    result_dir: Path,
-) -> None:
-    """Extract PCA colormap from features and save to a specified directory."""
-    features = _calculate_pca(features)
-    features = _color_features(features)
-    
-    # Save as Images
-    image_dir = result_dir / tomo_name
-    image_dir.mkdir(parents=True, exist_ok=True)
-    
-    for idx in np.arange(data.shape[0], step=10):
-        img_path = image_dir / f"{idx}.png"
-        
-        f_img = Image.fromarray(features[idx][::-1])
-        d_img = Image.fromarray(data[idx][::-1])
-    
-        img = Image.new("RGB", (2 * f_img.size[0], f_img.size[1])) # concat images
-        img.paste(d_img)
-        img.paste(f_img, box=(d_img.size[0], 0))
-        img.save(img_path)
 
 def _process_sample(src_dir: Path, dst_dir: Path, csv_dir: Path, model: torch.nn.Module, sample: str, datamodule: BaseDataModule, batch_size: int, image_dir: Optional[Path]):
     """Process all tomograms in a single sample by extracting and saving their DINOv2 features."""
@@ -173,7 +112,7 @@ def _process_sample(src_dir: Path, dst_dir: Path, csv_dir: Path, model: torch.nn
         _save_data(data, features, records[i], result_dir)
         # Save PCA calculation of features
         if image_dir is not None:
-            _export_pca(data["data"], features.astype(np.float32), records[i][:-4], image_dir / sample)
+            export_pca(data["data"], features.astype(np.float32), records[i][:-4], image_dir / sample)
 
 def run_dino(cfg: DinoFeaturesConfig) -> None:
     """Process all tomograms in a sample or samples by extracting and saving their DINOv2 features."""
