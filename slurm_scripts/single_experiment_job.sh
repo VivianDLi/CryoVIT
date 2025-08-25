@@ -1,13 +1,13 @@
 #!/bin/bash
 
 exp_name=$1
+model=$2
 
 # Setup environment
 env_dir=/sdf/home/v/vdl21/projects/libs/
 
 # Handle optional model and label_key arguments
-if [ "$#" == 3 ]; then
-    model=$2
+if [ "$#" == 4 ]; then
     sample=$3
 
     # Setup W&B API key
@@ -28,5 +28,6 @@ else
 
     $env_dir/cryovit_env/bin/python -m \
         cryovit.train_model \
-        +experiments=$exp_name
+        +experiments=$exp_name \
+        model=$model
 fi
