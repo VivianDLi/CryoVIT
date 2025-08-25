@@ -25,12 +25,12 @@ hue_palette = {
     "CryoViT with Dense Labels": colors[2],
 }
 
-def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_name: str):
+def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: str, file_name: str):
     """Plot DataFrame results with box and strip plots including annotations for statistical tests.
 
     Args:
         df (pd.DataFrame): DataFrame containing the data to plot.
-        pvalues (pd.Series): Series containing p-values for annotations.
+        pvalues (Dict[str, pd.Series]): Dictionary containing p-values for annotations for each model.
         key (str): The column name used to group data points in the plot.
         title (str): The title of the plot.
         file_name (str): Base file name for saving the plot images.
@@ -42,7 +42,7 @@ def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_nam
 
     params = dict(
         x="Sample",
-        y="TEST_DiceMetric",
+        y="DiceMetric",
         hue=key,
         data=df,
         order=sorted_samples,
@@ -65,12 +65,11 @@ def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_nam
         **params,
     )
 
-    k1, k2 = df[key].unique()
-    pairs = [[(s, k1), (s, k2)] for s in pvalues.index]
-
-    annotator = Annotator(ax, pairs, **params)
-    annotator.configure(color="blue", line_width=1, verbose=False)
-    annotator.set_pvalues_and_annotate(pvalues.values)
+    for k2 in pvalues:
+        pairs = [[(s, "CryoViT"), (s, k2)] for s in pvalues[k2].index]
+        annotator = Annotator(ax, pairs, **params)
+        annotator.configure(color="blue", line_width=1, verbose=False)
+        annotator.set_pvalues_and_annotate(pvalues[k2].values)
 
     current_labels = ax.get_xticklabels()
     new_labels = [
@@ -95,7 +94,8 @@ def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_nam
     plt.savefig(f"{file_name}.png", dpi=300)
 
 def process_single_experiment(exp_type: str, exp_group: str, exp_names: Dict[str, str], exp_dir: Path, result_dir: Path):
-    df = merge_experiments(exp_dir, exp_names, key="Model")
+    result_dir.mkdir(parents=True, exist_ok=True)
+    df = merge_experiments(exp_dir, exp_names, keys=["Model"])
     p_values = {}
     for model in exp_names.values():
         if model == "CryoViT":
@@ -103,4 +103,7 @@ def process_single_experiment(exp_type: str, exp_group: str, exp_names: Dict[str
         test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key="Model", test_fn="wilcoxon")
         m_name = model.replace(" ", "").lower()
         p_values[model] = compute_stats(df, group_keys=["Sample", "Model"], file_name=result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
-    plot_df(df, p_values, "Model", f"{exp_type.capitalize()} {exp_group.upper()} Comparison", result_dir / f"{exp_group}_comparison")
+    if exp_type != "sparse":
+        plot_df(df, p_values, "Model", f"Model Comparison on Individual {exp_group.upper()} Samples for {exp_type.capitalize()}", result_dir / f"{exp_group}_{exp_type}_comparison")
+    else:
+        plot_df(df, p_values, "Model", "CryoViT: Sparse vs Dense Labels Comparison on Individual Samples", result_dir / f"sparse_vs_dense_comparison")

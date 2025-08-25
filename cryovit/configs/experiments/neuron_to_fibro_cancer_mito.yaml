@@ -3,7 +3,7 @@ defaults:
   - override /model: cryovit
   - override /datamodule: multi
 
-name: neuron_to_fibro_cancer_mito
+name: neuron_to_fibro_cancer_${model}_mito
 label_key: mito
 
 datamodule:

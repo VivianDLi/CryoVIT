@@ -3,7 +3,7 @@ defaults:
   - override /model: cryovit
   - override /datamodule: multi
 
-name: healthy_to_hd_mito
+name: healthy_to_hd_${model}_mito
 label_key: mito
 
 datamodule:

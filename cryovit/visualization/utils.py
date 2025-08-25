@@ -5,14 +5,14 @@ import pandas as pd
 from scipy.stats import wilcoxon, ttest_rel
 
 def merge_experiments(
-    exp_dir: Path, exp_names: Dict[str, str], key: str = "Model"
+    exp_dir: Path, exp_names: Dict[str, str], keys: List[str] = ["Model"]
 ) -> pd.DataFrame:
     """Merge multiple experiment results into a single DataFrame.
 
     Args:
         exp_dir (Path): The directory containing experiment results (.csvs).
-        exp_names (Dict[str, str]): A dictionary mapping experiment subdirectory names to labels.
-        key (str): The column name to assign to the experiment labels in the merged DataFrame.
+        exp_names (Dict[str, List[str]]): A dictionary mapping experiment subdirectory names to labels.
+        keys (List[str]): The column names to assign to the experiment labels in the merged DataFrame.
 
     Returns:
         pd.DataFrame: A DataFrame containing merged experiment data.
@@ -22,7 +22,8 @@ def merge_experiments(
     for exp_name, value in exp_names.items():
         result_csv = exp_dir / f"{exp_name}.csv"
         df = pd.read_csv(result_csv)
-        df[key] = value
+        for key, val in zip(keys, value):
+            df[key] = val
         results.append(df)
 
     return pd.concat(results, axis=0, ignore_index=True)
@@ -40,8 +41,8 @@ def significance_test(df, model_A: str, model_B: str, key: str = "Model", test_f
     Returns:
         float: The p-value from the statistical test.
     """
-    score_A = df[df[key] == model_A].sort_values("tomo_name").TEST_DiceMetric
-    score_B = df[df[key] == model_B].sort_values("tomo_name").TEST_DiceMetric
+    score_A = df[df[key] == model_A].sort_values("tomo_name").DiceMetric
+    score_B = df[df[key] == model_B].sort_values("tomo_name").DiceMetric
 
     if test_fn == "wilcoxon":
         _, pvalue = wilcoxon(score_A, score_B, method="exact", alternative="greater")

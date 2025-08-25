@@ -12,13 +12,16 @@ model_names = {
 
 experiment_names = {
     "dino_pca": {},
-    "mito": {s_group: {f"single_{s_group}_{m_key}_mito": m_value for m_key, m_value in model_names.items()} for s_group in ["ad", "hd", "rgc", "algae"]},
-    "cristae": {s_group: {f"single_{s_group}_{m_key}_cristae": m_value for m_key, m_value in model_names.items()} for s_group in ["ad", "hd"]},
-    "tubules": {s_group: {f"single_{s_group}_{m_key}_tubules": m_value for m_key, m_value in model_names.items()} for s_group in ["ad", "hd"]},
-    "bacteria": {s_group: {f"single_{s_group}_{m_key}_bacteria": m_value for m_key, m_value in model_names.items()} for s_group in ["campy"]},
-    "multi": {s_group: {m_value: {f"{s_group[0]}_to_{s_group[1]}_{m_key}_mito": m_value, f"{s_group[1]}_to_{s_group[0]}_{m_key}_mito": m_value} for m_key, m_value in model_names.items()} for s_group in [("hd", "healthy"), ("old", "young"), ("neuron", "fibro_cancer")]},
-    "fractional": {"hd": {f"fractional_{m_key}_mito": m_value for m_key, m_value in model_names.items()}},
-    "sparse": {"hd": {f"sparse_{m_key}_mito": m_value for m_key, m_value in model_names.items()}},
+    "mitochondria": {s_group: {f"single_{s_group}_{m_key}_mito": [m_value] for m_key, m_value in model_names.items()} for s_group in ["ad", "hd", "rgc", "algae"]},
+    "cristae": {s_group: {f"single_{s_group}_{m_key}_cristae": [m_value] for m_key, m_value in model_names.items()} for s_group in ["ad", "hd"]},
+    "microtubules": {s_group: {f"single_{s_group}_{m_key}_tubules": [m_value] for m_key, m_value in model_names.items()} for s_group in ["ad", "hd"]},
+    "bacteria": {s_group: {f"single_{s_group}_{m_key}_bacteria": [m_value] for m_key, m_value in model_names.items()} for s_group in ["campy"]},
+    "multi": {s_group: {m_value: {f"{s_group[0]}_to_{s_group[1]}_{m_key}_mito": [m_value, "forward"], f"{s_group[1]}_to_{s_group[0]}_{m_key}_mito": [m_value, "backward"]} for m_key, m_value in model_names.items()} for s_group in [("hd", "healthy"), ("old", "young"), ("neuron", "fibro_cancer")]},
+    "fractional": {"hd": {f"fractional_{m_key}_mito": [m_value] for m_key, m_value in model_names.items()}},
+    "sparse": {
+        "single": {f"single_sample_cryovit_mito": ["CryoViT"], f"single_sample_cryovit_mito_ai": ["CryoViT"]},
+        "fractional": {f"fractional_sample_cryovit_mito": ["Sparse"], f"fractional_sample_cryovit_mito_ai": ["Dense"]}
+    }
 }
 
 if __name__ == "__main__":
@@ -53,6 +56,15 @@ if __name__ == "__main__":
     elif args.exp_type == "fractional":
         for group, names in exp_names.items():
             process_fractional_experiment(args.exp_type, group, names, args.exp_dir, args.result_dir)
+    elif args.exp_type == "sparse":
+        for sample_type, names in exp_names.items():
+            if sample_type == "single":
+                process_single_experiment(args.exp_type, "hd", names, args.exp_dir, args.result_dir)
+            elif sample_type == "fractional":
+                process_fractional_experiment(args.exp_type, "hd", names, args.exp_dir, args.result_dir)
+            else:
+                print(f"Unknown sample type: {sample_type}")
+                continue
     else:
         for group, names in exp_names.items():
             process_single_experiment(args.exp_type, group, names, args.exp_dir, args.result_dir)

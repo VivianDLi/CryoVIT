@@ -23,7 +23,7 @@ if [ "$#" == 4 ]; then
 else
     # Setup W&B API key
     if [ -z "$WANDB_API_KEY" ]; then
-        export WANDB_API_KEY=$2
+        export WANDB_API_KEY=$3
     fi
 
     $env_dir/cryovit_env/bin/python -m \

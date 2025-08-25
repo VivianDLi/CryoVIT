@@ -88,12 +88,16 @@ def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_nam
 
 
 def process_fractional_experiment(exp_type: str, exp_group: str, exp_names: Dict[str, str], exp_dir: Path, result_dir: Path):
-    df = merge_experiments(exp_dir, exp_names, key="Model")
+    key = "Model" if exp_type != "sparse" else "Label Type"
+    df = merge_experiments(exp_dir, exp_names, keys=[key])
     p_values = {}
     for model in exp_names.values():
         if model == "CryoViT":
             continue
-        test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key="Model", test_fn="wilcoxon")
+        test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key=key, test_fn="ttest_rel")
         m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(df, group_keys=["split_id", "Model"], file_name=result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
-    plot_df(df, p_values, "Model", f"{exp_type.capitalize()} {exp_group.upper()} Comparison", result_dir / f"{exp_group}_comparison")
+        p_values[model] = compute_stats(df, group_keys=["split_id", key], file_name=result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
+    if exp_type != "sparse":
+        plot_df(df, p_values, key, f"Model Comparison on All {exp_group.upper()} Samples", result_dir / f"{exp_group}_{exp_type}_comparison")
+    else:
+        plot_df(df, p_values, key, "CryoViT: Sparse vs. Dense Labels Comparison on All Samples", result_dir / f"fractional_sparse_vs_dense_comparison")

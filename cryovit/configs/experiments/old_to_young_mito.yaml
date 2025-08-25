@@ -3,7 +3,7 @@ defaults:
   - override /model: cryovit
   - override /datamodule: multi
 
-name: old_to_young_mito
+name: old_to_young_${model}_mito
 label_key: mito
 
 datamodule:
