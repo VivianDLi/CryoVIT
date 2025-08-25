@@ -9,7 +9,6 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.optim import Optimizer
 import numpy as np
 from sam2.modeling.sam2_base import SAM2Base
 from sam2.modeling.sam2_utils import select_closest_cond_frames, get_1d_sine_pe
@@ -31,22 +30,6 @@ class SAM2(BaseModel):
         """Initializes the SAM2 model with specific convolutional and synthesis blocks."""
         super(SAM2, self).__init__(**kwargs)
         self.model = sam_model(**custom_kwargs)
-
-    def configure_optimizers(self) -> Optimizer:
-        """Configures the optimizer with the initialization parameters."""
-        return torch.optim.AdamW(
-            [
-                {
-                    "params": [p for p in self.model.prompt_predictor.parameters()],
-                    "lr": 10 * self.lr, # use a higher learning rate for the prompt predictor
-                },
-                {
-                    "params": [p for p in self.model.sam_mask_decoder.parameters()]
-                }
-            ],
-            lr=self.lr,
-            weight_decay=self.weight_decay,
-        )
 
     def _masked_predict(
         self, batch: BatchedTomogramData
@@ -86,12 +69,9 @@ class SAM2(BaseModel):
         for k, v in mask_losses.items():
             if k != "total":
                 losses["mask_" + k] = v
-        losses["total"] = 0.5 * losses["total"] + 0.5 * mask_losses["total"]
+        losses["total"] = losses["total"] + mask_losses["total"]
 
         self.log_stats(losses, prefix, batch.num_tomos)
-        # Log representative image to wandb for debugging
-        if batch_idx == 0 and prefix == "train":
-            wandb.log({"pred": wandb.Image(out_dict["preds_full"][0, 30].cpu().detach().numpy()), "mask": wandb.Image(out_dict["masks_full"][0, 30].cpu().detach().numpy())})
         return losses["total"]
 
     def forward(self, data: BatchedTomogramData) -> Dict[str, Tensor]:
@@ -138,7 +118,7 @@ class SAM2Train(SAM2Base):
                 
     def _apply_lora_to_mask_decoder(self):
         """Delay applying LoRA to the mask decoder until after loading weights."""
-        decoder_factory = LoRAMaskDecoderFactory(lora_r=64, lora_alpha=128) # Using alpha=r*2 as recommended by Microsoft
+        decoder_factory = LoRAMaskDecoderFactory(lora_r=128, lora_alpha=256) # Using alpha=r*2 as recommended by Microsoft
         self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
     def forward(self, data: BatchedTomogramData) -> Tensor:
