@@ -94,6 +94,7 @@ class BaseTrainer:
         max_epochs (Optional[int]): The maximum number of epochs to train for.
         enable_checkpointing (bool): Flag to enable or disable model checkpointing.
         enable_model_summary (bool): Enable model summarization.
+        log_every_n_steps (Optional[int]): Frequency of logging in terms of training steps.
     """
     _target_: str = "pytorch_lightning.Trainer"
     
@@ -104,6 +105,7 @@ class BaseTrainer:
     max_epochs: Optional[int] = None
     enable_checkpointing: bool = False
     enable_model_summary: bool = True
+    log_every_n_steps: Optional[int] = None
 
 
 @dataclass

@@ -2,9 +2,7 @@
 
 from abc import ABC, abstractmethod
 from copy import deepcopy
-from typing import Callable, Literal
-from typing import Dict
-from typing import Tuple
+from typing import Callable, Literal, Dict, Tuple
 
 import numpy as np
 import torch
@@ -71,11 +69,11 @@ class BaseModel(LightningModule, ABC):
     def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
         """Logs gradient norms just before the optimizer updates weights."""
         norms = grad_norm(self, norm_type=2)
-        self.log_dict(norms, on_step=True)
+        self.log_dict(norms, logger=True, on_step=True)
 
     def _masked_predict(
         self, batch: BatchedTomogramData
-    ) -> Tuple[Tensor, Tensor, Tensor]:
+    ) -> Dict[str, Tensor]:
         """Performs prediction while applying a mask to the inputs and labels based on the label value."""
         y_true = batch.labels # (B, D, H, W)
 
@@ -85,36 +83,41 @@ class BaseModel(LightningModule, ABC):
         y_pred = torch.masked_select(y_pred_full, mask).view(-1, 1)
         y_true = torch.masked_select(y_true, mask).view(-1, 1)
 
-        return y_pred, y_true, y_pred_full
+        return {
+            "preds": y_pred,
+            "labels": y_true,
+            "preds_full":y_pred_full
+        }
 
     def compute_losses(self, y_pred: Tensor, y_true: Tensor) -> Dict[str, Tensor]:
         losses = {k: v(y_pred, y_true) for k, v in self.loss_fns.items()}
         losses["total"] = sum(losses.values())
         return losses
 
-    def log_stats(self, losses: Dict[str, Tensor], prefix: Literal["train", "val", "test"]) -> None:
+    def log_stats(self, losses: Dict[str, Tensor], prefix: Literal["train", "val", "test"], batch_size: int) -> None:
         """Logs computed loss and metric statistics for each training or validation step."""
         # Log losses
         loss_log_dict = {f"{prefix}/loss/{k}": v for k, v in losses.items()}
         on_step = prefix == "train"
-        self.log_dict(loss_log_dict, prog_bar=True, on_epoch=not on_step, on_step=on_step, batch_size=1)
+        self.log_dict(loss_log_dict, prog_bar=True, logger=True, on_epoch=not on_step, on_step=on_step, batch_size=batch_size)
         
         # Log metrics
         metric_log_dict = {}
         for m, m_fn in self.metric_fns[prefix.upper()].items():
             metric_log_dict[f"{prefix}/metric/{m}"] = m_fn
-        self.log_dict(metric_log_dict, prog_bar=True, on_epoch=True, on_step=False, batch_size=1)
+        self.log_dict(metric_log_dict, prog_bar=True, logger=True, on_epoch=True, on_step=False, batch_size=batch_size)
 
     def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> float:
         """Processes a single batch of data, computes the loss and updates metrics."""
-        y_pred, y_true, _ = self._masked_predict(batch)
+        out = self._masked_predict(batch)
+        y_pred, y_true = out["preds"], out["labels"]
 
         losses = self.compute_losses(y_pred, y_true)
 
         for _, m_fn in self.metric_fns[prefix.upper()].items():
             m_fn(y_pred, y_true)
 
-        self.log_stats(losses, prefix)
+        self.log_stats(losses, prefix, batch.num_tomos)
         return losses["total"]
 
     def training_step(self, batch: BatchedTomogramData, batch_idx: int) -> float:
@@ -138,7 +141,8 @@ class BaseModel(LightningModule, ABC):
         assert batch.aux_data is not None and "data" in batch.aux_data, "Batch aux_data must contain 'data' key for testing."
         input_data = [torch.from_numpy(batch.aux_data["data"][i]) for i in range(batch.num_tomos)]
     
-        y_pred, y_true, y_pred_full = self._masked_predict(batch)
+        out_dict = self._masked_predict(batch)
+        y_pred, y_true, y_pred_full = out_dict["preds"], out_dict["labels"], out_dict["preds_full"]
 
         samples, tomo_names = batch.metadata.identifiers
         split_id = batch.metadata.split_id

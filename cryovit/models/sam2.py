@@ -1,6 +1,6 @@
 # """SAMv2 model for 2D/3D tomogram segmentation, using the existing library to support training and fine-tuning."""
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Literal, Optional, Tuple, Union
 import logging
 
 from hydra.utils import instantiate
@@ -9,15 +9,17 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim import Optimizer
 import numpy as np
 from sam2.modeling.sam2_base import SAM2Base
-from sam2.modeling.backbones.hieradet import Hiera
 from sam2.modeling.sam2_utils import select_closest_cond_frames, get_1d_sine_pe
 
 from cryovit.models.base_model import BaseModel
-from cryovit.models.prompt_predictor import PromptPredictor
+from cryovit.models.sam2_blocks import PromptPredictor, LoRAMaskDecoderFactory
 from cryovit.config import BaseModel as BaseModelConfig
 from cryovit.types import BatchedTomogramData
+
+import wandb
 
 sam2_model = ("facebook/sam2.1-hiera-tiny", {"config": "sam2.1_hiera_t.yaml", "weights": "sam2.1_hiera_tiny.pt"}) # the tiny variant of SAMv2.1
 medical_sam2_model = ("wanglab/MedSAM2", {"config": "sam2.1_hiera_t.yaml", "weights": "MedSAM2_latest.pt"}) # fine-tuned on medical data SAMv2
@@ -25,50 +27,119 @@ medical_sam2_model = ("wanglab/MedSAM2", {"config": "sam2.1_hiera_t.yaml", "weig
 class SAM2(BaseModel):
     """Lightning wrapper over the SAM2 model."""
     
-    def __init__(self, sam_model: "SAM2Train", **kwargs) -> None:
+    def __init__(self, sam_model: "SAM2Train", custom_kwargs, **kwargs) -> None:
         """Initializes the SAM2 model with specific convolutional and synthesis blocks."""
         super(SAM2, self).__init__(**kwargs)
-        self.model = sam_model
-        
-    def load_state_dict(self, state_dict: Dict[str, Tensor], strict: bool = False, assign: bool = True) -> Tuple:
-        return self.model.load_state_dict(state_dict, strict=strict, assign=assign)
+        self.model = sam_model(**custom_kwargs)
 
-    def forward(self, data: BatchedTomogramData) -> Tensor:
+    def configure_optimizers(self) -> Optimizer:
+        """Configures the optimizer with the initialization parameters."""
+        return torch.optim.AdamW(
+            [
+                {
+                    "params": [p for p in self.model.prompt_predictor.parameters()],
+                    "lr": 10 * self.lr, # use a higher learning rate for the prompt predictor
+                },
+                {
+                    "params": [p for p in self.model.sam_mask_decoder.parameters()]
+                }
+            ],
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+        )
+
+    def _masked_predict(
+        self, batch: BatchedTomogramData
+    ) -> Dict[str, Tensor]:
+        """Override trainer _masked_predict to handle masking for the prompt predictor."""
+        y_true = batch.labels # (B, D, H, W)
+
+        out = self(batch)
+        y_pred_full, mask_pred_full = out["preds"], out["prompts"]
+        mask = (y_true > -1.0).detach()
+
+        y_pred = torch.masked_select(y_pred_full, mask).view(-1, 1)
+        y_true = torch.masked_select(y_true, mask).view(-1, 1)
+        mask_pred = torch.masked_select(mask_pred_full, mask).view(-1, 1)
+
+        return {
+            "preds": y_pred,
+            "masks": mask_pred,
+            "labels": y_true,
+            "preds_full": y_pred_full,
+            "masks_full": mask_pred_full
+        }
+
+    def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> float:
+        """Override trainer do_step to handle losses for the prompt predictor."""
+        out_dict = self._masked_predict(batch)
+        
+        y_pred, y_true, mask_pred = out_dict["preds"], out_dict["labels"], out_dict["masks"]
+
+        losses = self.compute_losses(y_pred, y_true)
+
+        for _, m_fn in self.metric_fns[prefix.upper()].items():
+            m_fn(y_pred, y_true)
+
+        # Additionally compute losses for the prompt predictor
+        mask_losses = self.compute_losses(mask_pred, y_true)
+        for k, v in mask_losses.items():
+            if k != "total":
+                losses["mask_" + k] = v
+        losses["total"] = 0.5 * losses["total"] + 0.5 * mask_losses["total"]
+
+        self.log_stats(losses, prefix, batch.num_tomos)
+        # Log representative image to wandb for debugging
+        if batch_idx == 0 and prefix == "train":
+            wandb.log({"pred": wandb.Image(out_dict["preds_full"][0, 30].cpu().detach().numpy()), "mask": wandb.Image(out_dict["masks_full"][0, 30].cpu().detach().numpy())})
+        return losses["total"]
+
+    def forward(self, data: BatchedTomogramData) -> Dict[str, Tensor]:
         # Expand channels for expected RGB input
         if data.tomo_batch.size(2) == 1:
             data.tomo_batch = data.tomo_batch.expand(-1, -1, 3, -1, -1)
-        return self.model(data)
-    
+        out = self.model(data)
+        return out
+        
+    def load_state_dict(self, state_dict: Dict[str, Tensor], strict: bool = False, assign: bool = True) -> Tuple:
+        """Override load_state_dict to handle loading of SAM2 weights."""
+        return self.model.load_state_dict(state_dict, strict=strict, assign=assign)
+
     def compile(self) -> None:
         """Compiles the model image encoder for training."""
         self.model.image_encoder.forward = torch.compile(self.model.image_encoder.forward)
+        self.model.memory_encoder.forward = torch.compile(self.model.memory_encoder.forward)
+        self.model.memory_attention.forward = torch.compile(self.model.memory_attention.forward)
 
 class SAM2Train(SAM2Base):
     """SAMv2 model implementation."""
 
-    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), num_learnable_prompt_tokens: int = 10, freeze_image_encoder: bool = True, freeze_prompt_encoder: bool = True, freeze_memory: bool = True, **kwargs) -> None:
+    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), **kwargs) -> None:
         """Initializes the CryoVIT model with specific convolutional and synthesis blocks."""
         super(SAM2Train, self).__init__(image_encoder, memory_attention, memory_encoder, **kwargs)
         self.num_init_cond_slices = num_init_cond_slices
         self.rand_init_cond_slices = rand_init_cond_slices
 
-        self.prompt_predictor = PromptPredictor(self.sam_prompt_encoder)
-        self.learnable_prompts = torch.nn.Parameter(torch.randn(1, num_learnable_prompt_tokens, 256) / np.sqrt(256))
+        self.prompt_predictor = PromptPredictor(in_channels=self.hidden_dim, out_channels=1)
 
         # Only fine-tune on the prompt predictor and the mask decoder
-        if freeze_image_encoder:
-            for p in self.image_encoder.parameters():
-                p.requires_grad = False
+        self.freeze_parameters()
                 
-        if freeze_prompt_encoder:
-            for p in self.sam_prompt_encoder.parameters():
-                p.requires_grad = False
+    def freeze_parameters(self):
+        """Freezes all model parameters except for the prompt predictor and mask decoder."""
+        for p in self.image_encoder.parameters():
+            p.requires_grad = False
+        for p in self.sam_prompt_encoder.parameters():
+            p.requires_grad = False
+        for p in self.memory_encoder.parameters():
+            p.requires_grad = False
+        for p in self.memory_attention.parameters():
+            p.requires_grad = False
                 
-        if freeze_memory:
-            for p in self.memory_encoder.parameters():
-                p.requires_grad = False
-            for p in self.memory_attention.parameters():
-                p.requires_grad = False
+    def _apply_lora_to_mask_decoder(self):
+        """Delay applying LoRA to the mask decoder until after loading weights."""
+        decoder_factory = LoRAMaskDecoderFactory(lora_r=64, lora_alpha=128) # Using alpha=r*2 as recommended by Microsoft
+        self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
     def forward(self, data: BatchedTomogramData) -> Tensor:
         """Forward pass for the SAMv2 model."""
@@ -83,19 +154,25 @@ class SAM2Train(SAM2Base):
 
         # precompute image features on all slices before tracking for mask generation
         backbone_out = self.forward_image(flat_tensor)
+        
         backbone_out = self.prepare_prompt_inputs(backbone_out, data)
-        out = self.forward_tracking(backbone_out, data)
+        
+        out, mask_out = self.forward_tracking(backbone_out, data)
+        out = torch.sigmoid(out)
 
         if do_resize:
             # Upsample the output to the original size
             out = F.interpolate(out, size=(H, W), mode="bilinear", align_corners=False)
+            mask_out = F.interpolate(mask_out, size=(H, W), mode="bilinear", align_corners=False)
 
-        return torch.sigmoid(out)
+        return {
+            "preds": out,
+            "prompts": mask_out
+        }
 
     def prepare_prompt_inputs(self, backbone_out: Dict[str, Any], data: BatchedTomogramData, start_slice_idx: int = 0) -> Dict[str, Any]:
-        """Prepare a grid-point mask for automatic prompting or an input mask from labeled data."""
+        """Prepare predicted masks."""
         backbone_out["num_slices"] = data.num_slices
-        
         # Setup prompt parameters
         if self.training:
             num_init_cond_slices = self.num_init_cond_slices[0]
@@ -119,11 +196,11 @@ class SAM2Train(SAM2Base):
             ).tolist()
         backbone_out["init_cond_slices"] = init_cond_slices
         backbone_out["slices_not_in_init_cond"] = [n for n in range(start_slice_idx, backbone_out["num_slices"]) if n not in init_cond_slices]
-        
-        # Prepare mask and point inputs for each initial conditioning slice
+
+        # Prepare mask and point inputs for slices
         backbone_out["mask_inputs_per_slice"] = {}
-        backbone_out["point_inputs_per_slice"] = {}
         flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"]) # flat tensor form
+        backbone_out["flat_mask_prompts"] = flat_mask_prompts
         for n in init_cond_slices:
             idxs = data.index_to_flat_batch(n)
             backbone_out["mask_inputs_per_slice"][n] = flat_mask_prompts[idxs]
@@ -159,7 +236,7 @@ class SAM2Train(SAM2Base):
                 current_vision_feats=current_vision_feats,
                 current_vision_pos_embeds=current_vision_pos_embeds,
                 feat_sizes=feat_sizes,
-                point_inputs=backbone_out["point_inputs_per_slice"].get(slice_id, None),
+                point_inputs=None,
                 mask_inputs=backbone_out["mask_inputs_per_slice"].get(slice_id, None),
                 output_dict=output_dict,
                 num_slices=num_slices,
@@ -178,14 +255,14 @@ class SAM2Train(SAM2Base):
         all_slice_outputs = {}
         all_slice_outputs.update(output_dict["cond_frame_outputs"])
         all_slice_outputs.update(output_dict["non_cond_frame_outputs"])
-        total_output = []
+        pred_output = []
         for slice_id, output_dict in all_slice_outputs.items():
             # Upsample to original size (from low-res masks)
             preds = F.interpolate(output_dict["pred_masks"], scale_factor=4, mode="bilinear", align_corners=False)
-            total_output.append(preds)
-        total_output = torch.cat(total_output, dim=1) # [B, D, H, W]
-
-        return total_output
+            pred_output.append(preds)
+        total_output = torch.cat(pred_output, dim=1)
+        mask_output = backbone_out["flat_mask_prompts"].view(-1, num_slices, preds.shape[-2], preds.shape[-1])
+        return total_output, mask_output
 
     def track_step(self, slice_id: int, is_init_cond_slice: bool, current_vision_feats: Tensor, current_vision_pos_embeds: Tensor, feat_sizes: Tensor, point_inputs: Optional[Tensor], mask_inputs: Optional[Tensor], output_dict: Dict[str, Any], num_slices: int) -> None:
         # Run the tracking step for the current slice
@@ -410,19 +487,20 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
     model_cfg = OmegaConf.load(model_cfg_path)["model"]
     model_cfg._target_ = "cryovit.models.sam2.SAM2Train" # Use cryovit SAM2 as target
     model_cfg.image_size = 256 # Set image size to 512 (crop size for training)
-    config = OmegaConf.merge(model_cfg, cfg.custom_kwargs)
+    model_cfg._partial_ = True
     
-    model = instantiate(cfg, sam_model=config)
+    model = instantiate(cfg, sam_model=model_cfg, custom_kwargs=cfg.custom_kwargs)
     sd = torch.load(file_paths["weights"], map_location="cpu", weights_only=True)["model"]
     missing_keys, unexpected_keys = model.load_state_dict(sd)
-    valid_missing_keys = [k for k in missing_keys if "prompt_predictor" not in k and k != "learnable_prompts"] # ignore added parameters
+    valid_missing_keys = [k for k in missing_keys if "prompt_predictor" not in k] # ignore added parameters
     if valid_missing_keys:
         logging.error(valid_missing_keys)
         raise RuntimeError()
     if unexpected_keys:
         logging.error(unexpected_keys)
         raise RuntimeError()
-    model.model.replace_decoder()
+    model.model._apply_lora_to_mask_decoder() # Apply LoRA after loading weights
+    model.configure_optimizers() # Configure optimizers after setting requires_grad
 
     return model
 

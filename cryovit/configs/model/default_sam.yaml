@@ -4,10 +4,6 @@ input_key: data
 custom_kwargs:
   num_init_cond_slices: [1, 1]
   rand_init_cond_slices: [True, False]
-  num_learnable_prompt_tokens: 10
-  freeze_image_encoder: True
-  freeze_prompt_encoder: True
-  freeze_memory: True
 
 #### DO NOT CHANGE ####
 

@@ -1,4 +1,4 @@
-lr: 1e-4
+lr: 1e-5
 name: SAM2
 
 #### DO NOT CHANGE ####
