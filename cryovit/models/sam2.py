@@ -18,8 +18,6 @@ from cryovit.models.sam2_blocks import PromptPredictor, LoRAMaskDecoderFactory
 from cryovit.config import BaseModel as BaseModelConfig
 from cryovit.types import BatchedTomogramData
 
-import wandb
-
 sam2_model = ("facebook/sam2.1-hiera-tiny", {"config": "sam2.1_hiera_t.yaml", "weights": "sam2.1_hiera_tiny.pt"}) # the tiny variant of SAMv2.1
 medical_sam2_model = ("wanglab/MedSAM2", {"config": "sam2.1_hiera_t.yaml", "weights": "MedSAM2_latest.pt"}) # fine-tuned on medical data SAMv2
 
@@ -94,7 +92,7 @@ class SAM2(BaseModel):
 class SAM2Train(SAM2Base):
     """SAMv2 model implementation."""
 
-    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), **kwargs) -> None:
+    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), freeze_decoder: bool = False, **kwargs) -> None:
         """Initializes the CryoVIT model with specific convolutional and synthesis blocks."""
         super(SAM2Train, self).__init__(image_encoder, memory_attention, memory_encoder, **kwargs)
         self.num_init_cond_slices = num_init_cond_slices
@@ -104,6 +102,9 @@ class SAM2Train(SAM2Base):
 
         # Only fine-tune on the prompt predictor and the mask decoder
         self.freeze_parameters()
+        if freeze_decoder:
+            for p in self.sam_mask_decoder.parameters():
+                p.requires_grad = False
                 
     def freeze_parameters(self):
         """Freezes all model parameters except for the prompt predictor and mask decoder."""
