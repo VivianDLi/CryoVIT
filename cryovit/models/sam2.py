@@ -55,19 +55,12 @@ class SAM2(BaseModel):
         """Override trainer do_step to handle losses for the prompt predictor."""
         out_dict = self._masked_predict(batch)
         
-        y_pred, y_true, mask_pred = out_dict["preds"], out_dict["labels"], out_dict["masks"]
+        y_pred, y_true = out_dict["preds"], out_dict["labels"]
 
         losses = self.compute_losses(y_pred, y_true)
 
         for _, m_fn in self.metric_fns[prefix.upper()].items():
             m_fn(y_pred, y_true)
-
-        # Additionally compute losses for the prompt predictor
-        mask_losses = self.compute_losses(mask_pred, y_true)
-        for k, v in mask_losses.items():
-            if k != "total":
-                losses["mask_" + k] = v
-        losses["total"] = losses["total"] + mask_losses["total"]
 
         self.log_stats(losses, prefix, batch.num_tomos)
         return losses["total"]
@@ -92,13 +85,14 @@ class SAM2(BaseModel):
 class SAM2Train(SAM2Base):
     """SAMv2 model implementation."""
 
-    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), freeze_decoder: bool = False, **kwargs) -> None:
+    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), use_box_prompts: bool = True, freeze_decoder: bool = False, **kwargs) -> None:
         """Initializes the CryoVIT model with specific convolutional and synthesis blocks."""
         super(SAM2Train, self).__init__(image_encoder, memory_attention, memory_encoder, **kwargs)
         self.num_init_cond_slices = num_init_cond_slices
         self.rand_init_cond_slices = rand_init_cond_slices
 
         self.prompt_predictor = PromptPredictor(in_channels=self.hidden_dim, out_channels=1)
+        self.use_box_prompts = use_box_prompts
 
         # Only fine-tune on the prompt predictor and the mask decoder
         self.freeze_parameters()
@@ -119,7 +113,7 @@ class SAM2Train(SAM2Base):
                 
     def _apply_lora_to_mask_decoder(self):
         """Delay applying LoRA to the mask decoder until after loading weights."""
-        decoder_factory = LoRAMaskDecoderFactory(lora_r=128, lora_alpha=256) # Using alpha=r*2 as recommended by Microsoft
+        decoder_factory = LoRAMaskDecoderFactory(lora_r=64, lora_alpha=128) # Using alpha=r*2 as recommended by Microsoft
         self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
     def forward(self, data: BatchedTomogramData) -> Tensor:
@@ -179,11 +173,15 @@ class SAM2Train(SAM2Base):
         backbone_out["slices_not_in_init_cond"] = [n for n in range(start_slice_idx, backbone_out["num_slices"]) if n not in init_cond_slices]
 
         # Prepare mask and point inputs for slices
+        backbone_out["point_inputs_per_slice"] = {}
         backbone_out["mask_inputs_per_slice"] = {}
         flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"]) # flat tensor form
         backbone_out["flat_mask_prompts"] = flat_mask_prompts
-        for n in init_cond_slices:
+        for n in range(data.num_slices):
             idxs = data.index_to_flat_batch(n)
+            if self.use_box_prompts:
+                coords, labels = _sample_box_from_mask(flat_mask_prompts[idxs])
+                backbone_out["point_inputs_per_slice"][n] = {"point_coords": coords, "point_labels": labels}
             backbone_out["mask_inputs_per_slice"][n] = flat_mask_prompts[idxs]
 
         return backbone_out
@@ -217,7 +215,7 @@ class SAM2Train(SAM2Base):
                 current_vision_feats=current_vision_feats,
                 current_vision_pos_embeds=current_vision_pos_embeds,
                 feat_sizes=feat_sizes,
-                point_inputs=None,
+                point_inputs=backbone_out["point_inputs_per_slice"].get(slice_id, None),
                 mask_inputs=backbone_out["mask_inputs_per_slice"].get(slice_id, None),
                 output_dict=output_dict,
                 num_slices=num_slices,
@@ -467,7 +465,7 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
     model_cfg_path = file_paths["config"]
     model_cfg = OmegaConf.load(model_cfg_path)["model"]
     model_cfg._target_ = "cryovit.models.sam2.SAM2Train" # Use cryovit SAM2 as target
-    model_cfg.image_size = 256 # Set image size to 512 (crop size for training)
+    model_cfg.image_size = 512 # Set image size to 512 (crop size for training)
     model_cfg._partial_ = True
     
     model = instantiate(cfg, sam_model=model_cfg, custom_kwargs=cfg.custom_kwargs)
@@ -504,3 +502,45 @@ def _download_model_weights(sam_dir: Path) -> Dict[str, Dict[str, Path]]:
         "SAM2": sam2_config,
         "MedSAM": medsam_config
     }
+    
+def _mask_to_box(masks: Tensor) -> Tensor:
+    """Converts a binary mask to bounding box coordinates."""
+    device = masks.device
+    B, _, H, W = masks.shape
+    xs = torch.arange(W, device=device, dtype=torch.int32)
+    ys = torch.arange(H, device=device, dtype=torch.int32)
+    grid_xs, grid_ys = torch.meshgrid(xs, ys, indexing='xy')
+    grid_xs = grid_xs.unsqueeze(0).unsqueeze(0).expand(B, 1, H, W)
+    grid_ys = grid_ys.unsqueeze(0).unsqueeze(0).expand(B, 1, H, W)
+    min_xs, _ = torch.min(torch.where(masks, grid_xs, W).flatten(-2), dim=-1)
+    max_xs, _ = torch.max(torch.where(masks, grid_xs, -1).flatten(-2), dim=-1)
+    min_ys, _ = torch.min(torch.where(masks, grid_ys, H).flatten(-2), dim=-1)
+    max_ys, _ = torch.max(torch.where(masks, grid_ys, -1).flatten(-2), dim=-1)
+    bbox_coords = torch.stack([min_xs, min_ys, max_xs, max_ys], dim=-1)
+    return bbox_coords
+    
+def _sample_box_from_mask(masks: Tensor, noise: float = 0.1, noise_bound: int = 20, top_left_label: int = 2, bottom_right_label: int = 3) -> Tuple[Tensor, Tensor]:
+    """Samples a bounding box from a mask."""
+    binary_masks = (masks > 0.5).bool()
+    device = masks.device
+    B, _, H, W = binary_masks.shape
+    box_coords = _mask_to_box(binary_masks)
+    box_labels = torch.tensor([top_left_label, bottom_right_label], device=device, dtype=torch.int).repeat(B)
+
+    if noise > 0.0:
+        if not isinstance(noise_bound, Tensor):
+            noise_bound = torch.tensor(noise_bound, device=device)
+        bbox_w = box_coords[..., 2] - box_coords[..., 0]
+        bbox_h = box_coords[..., 3] - box_coords[..., 1]
+        max_dx = torch.min(bbox_w * noise, noise_bound)
+        max_dy = torch.min(bbox_h * noise, noise_bound)
+        box_noise = 2 * torch.rand((B, 1, 4), device=device) - 1
+        box_noise = box_noise * torch.stack((max_dx, max_dy, max_dx, max_dy), dim=-1)
+    
+        box_coords = box_coords + box_noise
+        img_bounds = torch.tensor([W, H, W, H], device=device) - 1
+        box_coords = torch.clamp(box_coords, min=torch.zeros_like(img_bounds), max=img_bounds)
+        
+    box_coords = box_coords.reshape(-1, 2, 2) # (B, 2, 2)
+    box_labels = box_labels.reshape(-1, 2) # (B, 2)
+    return box_coords, box_labels
