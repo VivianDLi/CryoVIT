@@ -50,7 +50,7 @@ def plot_df(df: pd.DataFrame, pvalues: pd.Series, title: str, ax: Axes):
 
     params = dict(
         x="Sample",
-        y="TEST_DiceMetric",
+        y="dice_metric",
         hue="Model",
         data=df,
         order=sorted_samples,

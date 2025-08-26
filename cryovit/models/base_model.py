@@ -139,14 +139,13 @@ class BaseModel(LightningModule, ABC):
             Dict[str, Any]: A dictionary containing test results and metrics for this batch.
         """
         assert batch.aux_data is not None and "data" in batch.aux_data, "Batch aux_data must contain 'data' key for testing."
-        input_data = [torch.from_numpy(batch.aux_data["data"][i]) for i in range(batch.num_tomos)]
-    
+        input_data = batch.aux_data["data"]
+
         out_dict = self._masked_predict(batch)
         y_pred, y_true, y_pred_full = out_dict["preds"], out_dict["labels"], out_dict["preds_full"]
 
         samples, tomo_names = batch.metadata.identifiers
         split_id = batch.metadata.split_id
-        data = [t_data.cpu().numpy() for t_data in input_data]
         labels = [t_labels.cpu().numpy() for t_labels in batch.labels]
         preds = [t_preds.cpu().numpy() for t_preds in y_pred_full]
         if split_id is not None:
@@ -164,7 +163,7 @@ class BaseModel(LightningModule, ABC):
             samples=samples,
             tomo_names=tomo_names,
             split_id=split_id,
-            data=data,
+            data=input_data,
             label=labels,
             preds=preds,
             losses=losses,

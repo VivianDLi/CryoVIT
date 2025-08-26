@@ -41,8 +41,8 @@ def significance_test(df, model_A: str, model_B: str, key: str = "Model", test_f
     Returns:
         float: The p-value from the statistical test.
     """
-    score_A = df[df[key] == model_A].sort_values("tomo_name").DiceMetric
-    score_B = df[df[key] == model_B].sort_values("tomo_name").DiceMetric
+    score_A = df[df[key] == model_A].sort_values("tomo_name").dice_metric
+    score_B = df[df[key] == model_B].sort_values("tomo_name").dice_metric
 
     if test_fn == "wilcoxon":
         _, pvalue = wilcoxon(score_A, score_B, method="exact", alternative="greater")
@@ -64,7 +64,7 @@ def compute_stats(df: pd.DataFrame, group_keys: List[str], file_name: str, test_
     Returns:
         pd.Series: A Series containing p-values for statistical tests.
     """
-    grouped = df.groupby(group_keys, sort=False)["TEST_DiceMetric"].agg(
+    grouped = df.groupby(group_keys, sort=False)["dice_metric"].agg(
         mean="mean",
         std="std",
         median="median",

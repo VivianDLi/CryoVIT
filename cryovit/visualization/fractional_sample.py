@@ -37,8 +37,8 @@ def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_nam
     ax = plt.gca()
 
     params = dict(
-        x="split",
-        y="TEST_DiceMetric",
+        x="split_id",
+        y="dice_metric",
         hue=key,
         data=df,
     )
