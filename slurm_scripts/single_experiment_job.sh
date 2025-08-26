@@ -6,6 +6,8 @@ model=$2
 # Setup environment
 env_dir=/sdf/home/v/vdl21/projects/libs/
 
+export CONDA_PREFIX="${env_dir}/cryovit_env"
+
 # Handle optional model and label_key arguments
 if [ "$#" == 4 ]; then
     sample=$3
