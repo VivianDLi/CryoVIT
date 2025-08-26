@@ -21,6 +21,8 @@ from cryovit.types import BatchedTomogramData
 sam2_model = ("facebook/sam2.1-hiera-tiny", {"config": "sam2.1_hiera_t.yaml", "weights": "sam2.1_hiera_tiny.pt"}) # the tiny variant of SAMv2.1
 medical_sam2_model = ("wanglab/MedSAM2", {"config": "sam2.1_hiera_t.yaml", "weights": "MedSAM2_latest.pt"}) # fine-tuned on medical data SAMv2
 
+MAX_SAM_DEPTH = 255 # Temporary maximum depth (number of slices) for SAMv2 (due to implementation error in CUDA - https://github.com/pytorch/pytorch/issues/142228)
+
 class SAM2(BaseModel):
     """Lightning wrapper over the SAM2 model."""
     
@@ -33,9 +35,8 @@ class SAM2(BaseModel):
         self, batch: BatchedTomogramData
     ) -> Dict[str, Tensor]:
         """Override trainer _masked_predict to handle masking for the prompt predictor."""
-        y_true = batch.labels # (B, D, H, W)
-
         out = self(batch)
+        y_true = batch.labels # (B, D, H, W)
         y_pred_full, mask_pred_full = out["preds"], out["prompts"]
         mask = (y_true > -1.0).detach()
 
@@ -69,7 +70,20 @@ class SAM2(BaseModel):
         # Expand channels for expected RGB input
         if data.tomo_batch.size(2) == 1:
             data.tomo_batch = data.tomo_batch.expand(-1, -1, 3, -1, -1)
+        # Truncate if too many slices
+        do_truncate = data.num_slices > MAX_SAM_DEPTH
+        if do_truncate:
+            logging.warning(f"Truncating input tomogram from {data.num_slices} to {MAX_SAM_DEPTH} slices for SAM2 model.")
+            data.tomo_batch = data.tomo_batch[:, :MAX_SAM_DEPTH]
+            data.labels = data.labels[:, :MAX_SAM_DEPTH]
+            data.tomo_sizes = torch.clamp(data.tomo_sizes, max=MAX_SAM_DEPTH)
+            data.min_slices = min(data.min_slices, MAX_SAM_DEPTH)
         out = self.model(data)
+        # Pad outputs if truncated
+        if do_truncate:
+            pad_size = (0, 0, 0, 0, 0, data.num_slices - MAX_SAM_DEPTH)
+            for k in out:
+                out[k] = F.pad(out[k], pad_size, mode="constant", value=0)
         return out
         
     def load_state_dict(self, state_dict: Dict[str, Tensor], strict: bool = False, assign: bool = True) -> Tuple:
