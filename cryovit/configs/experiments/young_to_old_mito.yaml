@@ -3,7 +3,7 @@ defaults:
   - override /model: cryovit
   - override /datamodule: multi
 
-name: young_to_old_${model}_mito
+name: young_to_old_${hydra:runtime.choices.model}_mito
 label_key: mito
 
 datamodule:

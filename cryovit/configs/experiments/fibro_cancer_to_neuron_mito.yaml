@@ -3,7 +3,7 @@ defaults:
   - override /model: cryovit
   - override /datamodule: multi
 
-name: fibro_cancer_to_neuron_${model}_mito
+name: fibro_cancer_to_neuron_${hydra:runtime.choices.model}_mito
 label_key: mito
 
 datamodule:
