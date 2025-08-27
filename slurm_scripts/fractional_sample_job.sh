@@ -15,7 +15,7 @@ env_dir=/sdf/home/v/vdl21/projects/libs/
 export CONDA_PREFIX="${env_dir}/cryovit_env"
 
 $env_dir/cryovit_env/bin/python -m \
-    cryovit.train_model \
+    cryovit.training.train_model \
     model=$model \
     name="fractional_${model}_${label_key}" \
     label_key=$label_key \

@@ -17,7 +17,7 @@ warnings.simplefilter("ignore")
 
 
 @hydra.main(
-    config_path="configs",
+    config_path="../configs",
     config_name="train_model",
     version_base="1.2",
 )

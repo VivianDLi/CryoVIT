@@ -46,7 +46,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     """Sets up and executes the model evaluation using the specified configuration.
 
     Args:
-        cfg (EvalModelConfig): Configuration object containing all settings for the evaluation process.
+        cfg (BaseExperimentConfig): Configuration object containing all settings for the evaluation process.
     """
     seed_everything(cfg.random_seed, workers=True)
     
@@ -82,5 +82,5 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     
     logging.info("Setup model.")
     
-    logging.info("Starting testing.")
-    trainer.test(model, datamodule=datamodule)
+    logging.info("Starting inference.")
+    trainer.predict(model, datamodule=datamodule)

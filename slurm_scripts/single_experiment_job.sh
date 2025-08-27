@@ -18,7 +18,7 @@ if [ "$#" == 4 ]; then
     fi
 
     $env_dir/cryovit_env/bin/python -m \
-        cryovit.train_model \
+        cryovit.training.train_model \
         +experiments=$exp_name \
         model=$model \
         datamodule.sample=$sample
@@ -29,7 +29,7 @@ else
     fi
 
     $env_dir/cryovit_env/bin/python -m \
-        cryovit.train_model \
+        cryovit.training.train_model \
         +experiments=$exp_name \
         model=$model
 fi

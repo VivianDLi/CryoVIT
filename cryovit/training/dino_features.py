@@ -13,7 +13,7 @@ from cryovit.run import dino_features
 warnings.simplefilter("ignore")
 
 @hydra.main(
-    config_path="configs",
+    config_path="../configs",
     config_name="dino_features",
     version_base="1.2",
 )

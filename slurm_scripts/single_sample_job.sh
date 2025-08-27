@@ -16,7 +16,7 @@ fi
 export CONDA_PREFIX="${env_dir}/cryovit_env"
 
 $env_dir/cryovit_env/bin/python -m \
-    cryovit.train_model \
+    cryovit.training.train_model \
     model=$model \
     name="single_${sample_group}_${model}_${label_key}" \
     label_key=$label_key \
