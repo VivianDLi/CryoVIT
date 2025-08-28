@@ -2,7 +2,13 @@
 
 # Check if four arguments are provided
 if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 sample group (ad, hd, rgc, algae, campy) model (cryovit, unet3d, sam2, or medsam) label_key (mito, microtubule, or cristae) wandb_api_key"
+    echo "Usage: $0 sample group (ad, hd, rgc, algae, campy) model (cryovit, unet3d, sam2, or medsam) label_key (mito, microtubule, cristae, granule, dense_mito) wandb_api_key"
+    exit 1
+fi
+
+# Check for valid labels for the specified group
+if [ "$1" != "hd" ] && [ "$3" == "granule" -o "$3" == "dense_mito"]; then
+    echo "Label keys granule and dense_mito are only valid for the hd group."
     exit 1
 fi
 
@@ -32,6 +38,21 @@ case $1 in
                     "WT"
                 )
                 ;;
+            "dense_mito")
+                samples=(
+                    "BACHD"
+                    "dN17_BACHD"
+                    "Q109"
+                    "Q18"
+                    "Q20"
+                    "Q53"
+                    "Q53_KD"
+                    "Q66"
+                    "Q66_GRFS1"
+                    "Q66_KD"
+                    "WT"
+                )
+                ;;
             "microtubule")
                 samples=(
                     "BACHD_Microtubules"
@@ -44,6 +65,19 @@ case $1 in
                 samples=(
                     "Q18"
                     "Q53"
+                )
+                ;;
+            "granule")
+                samples=(
+                    "BACHD"
+                    "dN17_BACHD"
+                    "Q109"
+                    "Q18"
+                    "Q20"
+                    "Q53"
+                    "Q66"
+                    "Q66_GRFS1"
+                    "WT"
                 )
                 ;;
             *)

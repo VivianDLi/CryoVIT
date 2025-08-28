@@ -143,6 +143,11 @@ class BaseModel(LightningModule, ABC):
 
         out_dict = self._masked_predict(batch)
         y_pred, y_true, y_pred_full = out_dict["preds"], out_dict["labels"], out_dict["preds_full"]
+        aux_data = {}
+        for key in out_dict:
+            if key not in ["preds", "labels", "preds_full"] and key.endswith("full"):
+                aux_data_full = out_dict[key]
+                aux_data[key] = [t_aux_data.cpu().numpy() for t_aux_data in aux_data_full]
 
         samples, tomo_names = batch.metadata.identifiers
         split_id = batch.metadata.split_id
@@ -167,7 +172,8 @@ class BaseModel(LightningModule, ABC):
             label=labels,
             preds=preds,
             losses=losses,
-            metrics=metrics
+            metrics=metrics,
+            aux_data=aux_data if aux_data else None
         )
     
     def predict_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:

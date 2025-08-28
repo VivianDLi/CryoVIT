@@ -61,6 +61,11 @@ class TestPredictionWriter(Callback):
                 fh.create_dataset("data", data=data, shape=data.shape, dtype=data.dtype)
                 fh["predictions"].create_dataset(self.label_key, data=segs, shape=segs.shape, dtype=segs.dtype, compression="gzip")
                 fh["labels"].create_dataset(self.label_key, data=true_segs, shape=labels.shape, dtype=labels.dtype, compression="gzip")
+                
+                if outputs.aux_data is not None:
+                    fh.create_group("aux_data")
+                    for key in outputs.aux_data:
+                        fh["aux_data"].create_dataset(key, data=outputs.aux_data[key], compression="gzip")
         
 class CsvWriter(Callback):
     """Callback to save model performance metrics to a .csv."""

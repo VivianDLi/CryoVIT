@@ -1,5 +1,5 @@
 max_epochs: 50
-enable_checkpointing: True
+enable_checkpointing: False
 default_root_dir: ${paths.exp_dir}
 
 log_every_n_steps: 1

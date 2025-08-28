@@ -129,6 +129,7 @@ class BatchedModelResult:
         preds: The model predictions for each tomogram in the batch.
         losses: A dictionary of losses for each tomogram in the batch.
         metrics: A dictionary of metrics for each tomogram in the batch.
+        aux_data: An optional dictionary containing auxiliary data for each tomogram in the batch.
     """
     
     num_tomos: int
@@ -140,3 +141,4 @@ class BatchedModelResult:
     preds: List[FloatTomogramData]
     losses: Dict[str, float]
     metrics: Dict[str, float]
+    aux_data: Optional[Dict[str, List[Any]]] = None
