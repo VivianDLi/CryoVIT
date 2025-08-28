@@ -66,7 +66,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     logger = [instantiate(lg_cfg) for lg_cfg in cfg.logger.values()]
     trainer: Trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
     logging.info("Setup trainer.")
-    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
+    if cfg.model._target_ == "cryovit.models.SAM2":
         # Load SAM2 pre-trained models
         model = create_sam_model_from_weights(cfg.model, cfg.paths.model_dir / cfg.paths.sam_name)
     else:

@@ -13,17 +13,19 @@ from statannotations.Annotator import Annotator
 from cryovit.visualization.utils import merge_experiments, significance_test, compute_stats
 
 matplotlib.use("Agg")
-colors = sns.color_palette("deep")[:3]
+colors = sns.color_palette("deep")[:4]
 sns.set_theme(style="darkgrid", font="Open Sans")
 
 hue_palette = {
     "3D U-Net": colors[0],
     "CryoViT": colors[1],
+    "SAM2": colors[2],
+    "MedSAM": colors[3],
     "CryoViT with Sparse Labels": colors[1],
     "CryoViT with Dense Labels": colors[2],
 }
 
-def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_name: str):
+def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: str, file_name: str):
     """Plot DataFrame results with box and strip plots including annotations for statistical tests.
 
     Args:
@@ -60,15 +62,15 @@ def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_nam
         **params,
     )
 
-    k1, k2 = df[key].unique()
-    pairs = [[(s, k1), (s, k2)] for s in pvalues.index]
-
-    annotator = Annotator(ax, pairs, **params)
-    annotator.configure(color="blue", line_width=1, verbose=False)
-    annotator.set_pvalues_and_annotate(pvalues.values)
+    for k2 in pvalues:
+        pairs = [[(s, "CryoViT"), (s, k2)] for s in pvalues[k2].index]
+        annotator = Annotator(ax, pairs, **params)
+        annotator.configure(color="blue", line_width=1, verbose=False)
+        annotator.set_pvalues_and_annotate(pvalues[k2].values)
 
     current_labels = ax.get_xticklabels()
     new_labels = [f"{label.get_text()}0%" for label in current_labels]
+    ax.set_xticks(range(len(new_labels)))
     ax.set_xticklabels(new_labels, ha="center")
 
     ax.set_ylim(-0.05, 1.15)
@@ -88,10 +90,11 @@ def plot_df(df: pd.DataFrame, pvalues: pd.Series, key: str, title: str, file_nam
 
 
 def process_fractional_experiment(exp_type: str, exp_group: str, exp_names: Dict[str, str], exp_dir: Path, result_dir: Path):
-    key = "Model" if exp_type != "sparse" else "Label Type"
+    key = "model" if exp_type != "sparse" else "label_type"
     df = merge_experiments(exp_dir, exp_names, keys=[key])
     p_values = {}
-    for model in exp_names.values():
+    for values in exp_names.values():
+        model = values[0]
         if model == "CryoViT":
             continue
         test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key=key, test_fn="ttest_rel")

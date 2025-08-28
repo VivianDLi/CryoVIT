@@ -84,11 +84,11 @@ def process_samples(exp_dir: Path, result_dir: Path):
     samples = [s.name for s in exp_dir.iterdir() if s.is_dir()]
     
     for sample in samples:
-        logging.info("Processing sample %s", sample.name)
+        logging.info("Processing sample %s", sample)
         tomo_dir = exp_dir / sample
         tomo_names = [f.name for f in tomo_dir.glob("*") if f.suffix in tomogram_exts]
         for tomo_name in tqdm(tomo_names):
             with h5py.File(tomo_dir / tomo_name) as fh:
                 data = fh["data"][()].astype(np.float32)
                 features = fh["dino_features"][()].astype(np.float32)
-                export_pca(data, features, tomo_name[:-4], result_dir / sample.name)
+                export_pca(data, features, tomo_name[:-4], result_dir / sample)

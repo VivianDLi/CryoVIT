@@ -5,7 +5,7 @@ import pandas as pd
 from scipy.stats import wilcoxon, ttest_rel
 
 def merge_experiments(
-    exp_dir: Path, exp_names: Dict[str, str], keys: List[str] = ["Model"]
+    exp_dir: Path, exp_names: Dict[str, List[str]], keys: List[str] = ["model"]
 ) -> pd.DataFrame:
     """Merge multiple experiment results into a single DataFrame.
 
@@ -28,7 +28,7 @@ def merge_experiments(
 
     return pd.concat(results, axis=0, ignore_index=True)
 
-def significance_test(df, model_A: str, model_B: str, key: str = "Model", test_fn: str = "wilcoxon") -> float:
+def significance_test(df, model_A: str, model_B: str, key: str = "model", test_fn: str = "wilcoxon") -> float:
     """Perform a significance test with a specific function between two models on a grouped DataFrame.
 
     Args:
@@ -81,7 +81,7 @@ def compute_stats(df: pd.DataFrame, group_keys: List[str], file_name: str, test_
     values = {col: grouped.apply(func, axis=1) for col, func in transforms.items()}
     stats_df = pd.DataFrame.from_dict(values).unstack(level=-1)
 
-    pvalues = df.groupby(group_keys[0]).apply(test_fn)
+    pvalues = df.groupby(group_keys[0]).apply(test_fn, include_groups=False)
     pvalues_formatted = pvalues.apply(lambda x: f"{x:.2e}")
     stats_df["p-value"] = pvalues_formatted[stats_df.index]
 

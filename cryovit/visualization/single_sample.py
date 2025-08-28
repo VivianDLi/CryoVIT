@@ -2,7 +2,7 @@
 
 import functools
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -10,6 +10,7 @@ import pandas as pd
 import seaborn as sns
 from statannotations.Annotator import Annotator
 
+from cryovit.config import Sample
 from cryovit.visualization.utils import merge_experiments, significance_test, compute_stats
 
 matplotlib.use("Agg")
@@ -35,14 +36,15 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
         title (str): The title of the plot.
         file_name (str): Base file name for saving the plot images.
     """
-    sample_counts = df["Sample"].value_counts()
+    sample_counts = df["sample"].value_counts()
+    num_models = df[key].nunique()
     sorted_samples = sample_counts.sort_values(ascending=True).index.tolist()
     fig = plt.figure(figsize=(12, 6))
     ax = plt.gca()
 
     params = dict(
-        x="Sample",
-        y="DiceMetric",
+        x="sample",
+        y="dice_metric",
         hue=key,
         data=df,
         order=sorted_samples,
@@ -73,10 +75,11 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
 
     current_labels = ax.get_xticklabels()
     new_labels = [
-        f"{label.get_text()}\n(n={sample_counts[label.get_text()] // 2})"
+        f"{Sample[label.get_text()].value}\n(n={sample_counts[label.get_text()] // num_models})"
         for label in current_labels
     ]
 
+    ax.set_xticks(range(len(new_labels)))
     ax.set_xticklabels(new_labels, ha="center")
     ax.set_ylim(-0.05, 1.15)
     ax.set_xlabel("")
@@ -93,17 +96,18 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
     plt.savefig(f"{file_name}.svg")
     plt.savefig(f"{file_name}.png", dpi=300)
 
-def process_single_experiment(exp_type: str, exp_group: str, exp_names: Dict[str, str], exp_dir: Path, result_dir: Path):
+def process_single_experiment(exp_type: str, exp_group: str, exp_names: Dict[str, List[str]], exp_dir: Path, result_dir: Path):
     result_dir.mkdir(parents=True, exist_ok=True)
-    df = merge_experiments(exp_dir, exp_names, keys=["Model"])
+    df = merge_experiments(exp_dir, exp_names, keys=["model"])
     p_values = {}
-    for model in exp_names.values():
+    for values in exp_names.values():
+        model = values[0]
         if model == "CryoViT":
             continue
-        test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key="Model", test_fn="wilcoxon")
+        test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key="model", test_fn="wilcoxon")
         m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(df, group_keys=["Sample", "Model"], file_name=result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
+        p_values[model] = compute_stats(df, group_keys=["sample", "model"], file_name=result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
     if exp_type != "sparse":
-        plot_df(df, p_values, "Model", f"Model Comparison on Individual {exp_group.upper()} Samples for {exp_type.capitalize()}", result_dir / f"{exp_group}_{exp_type}_comparison")
+        plot_df(df, p_values, "model", f"Model Comparison on Individual {exp_group.upper()} Samples for {exp_type.capitalize()}", result_dir / f"{exp_group}_{exp_type}_comparison")
     else:
-        plot_df(df, p_values, "Model", "CryoViT: Sparse vs Dense Labels Comparison on Individual Samples", result_dir / f"sparse_vs_dense_comparison")
+        plot_df(df, p_values, "model", "CryoViT: Sparse vs Dense Labels Comparison on Individual Samples", result_dir / f"sparse_vs_dense_comparison")
