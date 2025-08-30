@@ -108,7 +108,7 @@ def process_multi_experiment(exp_type: str, exp_group: Tuple[str, str], exp_name
     s1_count = forward_df["sample"].nunique()
     s2_count = backward_df["sample"].nunique()
 
-    fig = plt.figure(figsize=(12, 6))
+    fig = plt.figure(figsize=(12 if s1_count + s2_count > 6 else 6, 6))
     gs = GridSpec(1, 2, width_ratios=[s1_count, s2_count]) # Set width ratios based on unique sample counts
     
     ax1 = fig.add_subplot(gs[0])

@@ -38,8 +38,9 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
     """
     sample_counts = df["sample"].value_counts()
     num_models = df[key].nunique()
+    n_samples = df["sample"].nunique()
     sorted_samples = sample_counts.sort_values(ascending=True).index.tolist()
-    fig = plt.figure(figsize=(12, 6))
+    fig = plt.figure(figsize=(12 if n_samples > 6 else 6, 6))
     ax = plt.gca()
 
     params = dict(

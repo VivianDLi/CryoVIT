@@ -24,7 +24,7 @@ def _calculate_pca(features: DinoFeaturesData) -> FloatTomogramData:
     # Reduce dimensionality to 3 colors
     pca = PCA(n_components=1024)
     x = pca.fit_transform(x)
-    umap = UMAP(n_components=3, verbose=True, n_jobs=16)
+    umap = UMAP(n_components=3, verbose=False, n_jobs=16)
     umap.fit(x)
     # Upscale features
     features = F.interpolate(torch.from_numpy(features), scale_factor=2, mode="bicubic")
@@ -76,15 +76,17 @@ def export_pca(
         img = Image.new("RGB", (2 * f_img.size[0], f_img.size[1])) # concat images
         img.paste(d_img)
         img.paste(f_img, box=(d_img.size[0], 0))
+        print("Saving PCA visualization to %s", img_path)
         img.save(img_path)
 
 
 def process_samples(exp_dir: Path, result_dir: Path):
     result_dir.mkdir(parents=True, exist_ok=True)
     samples = [s.name for s in exp_dir.iterdir() if s.is_dir()]
+    print("Found %d samples in experiment directory %s: %s", len(samples), exp_dir, samples)
     
     for sample in samples:
-        logging.info("Processing sample %s", sample)
+        print("Processing sample %s", sample)
         tomo_dir = exp_dir / sample
         tomo_names = [f.name for f in tomo_dir.glob("*") if f.suffix in tomogram_exts]
         for tomo_name in tqdm(tomo_names):
