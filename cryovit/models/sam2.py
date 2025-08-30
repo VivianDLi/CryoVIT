@@ -2,6 +2,7 @@
 from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Tuple, Union
 import logging
+import wandb
 
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
@@ -9,6 +10,7 @@ import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim import Optimizer
 import numpy as np
 from sam2.modeling.sam2_base import SAM2Base
 from sam2.modeling.sam2_utils import select_closest_cond_frames, get_1d_sine_pe
@@ -22,6 +24,8 @@ sam2_model = ("facebook/sam2.1-hiera-tiny", {"config": "sam2.1_hiera_t.yaml", "w
 medical_sam2_model = ("wanglab/MedSAM2", {"config": "sam2.1_hiera_t.yaml", "weights": "MedSAM2_latest.pt"}) # fine-tuned on medical data SAMv2
 
 MAX_SAM_DEPTH = 255 # Temporary maximum depth (number of slices) for SAMv2 (due to implementation error in CUDA - https://github.com/pytorch/pytorch/issues/142228)
+# a large negative value as a placeholder score for missing objects
+NO_OBJ_SCORE = -1024.0
 
 class SAM2(BaseModel):
     """Lightning wrapper over the SAM2 model."""
@@ -30,6 +34,39 @@ class SAM2(BaseModel):
         """Initializes the SAM2 model with specific convolutional and synthesis blocks."""
         super(SAM2, self).__init__(**kwargs)
         self.model = sam_model(**custom_kwargs)
+        self.prompt_predictor = PromptPredictor()
+        
+        self.freeze_parameters()
+        self.log_masks = True # whether to log predicted masks during training for debugging
+        
+    def freeze_parameters(self):
+        """Freezes all model parameters except for the prompt predictor and mask decoder."""
+        for p in self.model.image_encoder.parameters():
+            p.requires_grad = False
+        for p in self.model.sam_prompt_encoder.parameters():
+            p.requires_grad = False
+        for p in self.model.memory_encoder.parameters():
+            p.requires_grad = False
+        for p in self.model.memory_attention.parameters():
+            p.requires_grad = False
+
+    def configure_optimizers(self) -> Optimizer:
+        """Configures the optimizer with the initialization parameters."""
+        prompt_params = {
+            "params": self.prompt_predictor.parameters(),
+            "lr": 3e-3,
+        }
+        decoder_params = {
+            "params": self.model.parameters(),
+        }
+        return torch.optim.AdamW(
+            [
+                prompt_params,
+                decoder_params
+            ],
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+        )
 
     def _masked_predict(
         self, batch: BatchedTomogramData
@@ -38,6 +75,7 @@ class SAM2(BaseModel):
         out = self(batch)
         y_true = batch.labels # (B, D, H, W)
         y_pred_full, mask_pred_full = out["preds"], out["prompts"]
+
         mask = (y_true > -1.0).detach()
 
         y_pred = torch.masked_select(y_pred_full, mask).view(-1, 1)
@@ -59,34 +97,69 @@ class SAM2(BaseModel):
         y_pred, y_true = out_dict["preds"], out_dict["labels"]
 
         losses = self.compute_losses(y_pred, y_true)
+        mask_loss = self.compute_losses(out_dict["masks"], y_true)["dice_loss"]
+        losses["mask_loss"] = mask_loss
+        losses["total"] = losses["total"] + mask_loss
 
         for _, m_fn in self.metric_fns[prefix.upper()].items():
             m_fn(y_pred, y_true)
 
         self.log_stats(losses, prefix, batch.num_tomos)
+        if self.training and self.log_masks:
+            # debug logging predicted masks
+            raw_image = batch.tomo_batch[0, batch.num_slices // 2].detach().cpu()[[0]]
+            pred_image = out_dict["preds_full"][0, batch.num_slices // 2].detach().cpu().unsqueeze(0)
+            mask_image = out_dict["masks_full"][0, batch.num_slices // 2].detach().cpu().unsqueeze(0)
+            prompt_image = (mask_image > 0.9).float()
+            combined_image = torch.cat([raw_image, pred_image, mask_image, prompt_image], dim=-1) # concat along width
+            wandb.log({"raw-pred-mask-prompt": [wandb.Image(combined_image, caption="Raw | Pred | Mask | Prompt")]}, commit=False)
+        
         return losses["total"]
 
     def forward(self, data: BatchedTomogramData) -> Dict[str, Tensor]:
+        C, H, W = data.tomo_batch.shape[-3:] # [H, W]
         # Expand channels for expected RGB input
-        if data.tomo_batch.size(2) == 1:
+        if C == 1:
             data.tomo_batch = data.tomo_batch.expand(-1, -1, 3, -1, -1)
+            C = 3
         # Truncate if too many slices
         do_truncate = data.num_slices > MAX_SAM_DEPTH
+        do_resize = (H != self.model.image_size or W != self.model.image_size)
         if do_truncate:
             logging.warning(f"Truncating input tomogram from {data.num_slices} to {MAX_SAM_DEPTH} slices for SAM2 model.")
             data.tomo_batch = data.tomo_batch[:, :MAX_SAM_DEPTH]
-            data.labels = data.labels[:, :MAX_SAM_DEPTH]
             data.tomo_sizes = torch.clamp(data.tomo_sizes, max=MAX_SAM_DEPTH)
             data.min_slices = min(data.min_slices, MAX_SAM_DEPTH)
-        out = self.model(data)
+        if do_resize:
+            # Resize the input tomogram batch to the target size
+            data.tomo_batch = F.interpolate(data.tomo_batch, size=(C, self.model.image_size, self.model.image_size), mode="trilinear", align_corners=False)
+
+        flat_tensor = data.flat_tomo_batch # [BxDxCxHxW] -> [[BxD]xCxHxW]
+        backbone_out = self.model.image_encoder(flat_tensor)
+        flat_box_prompts, flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"][0], num_batches=data.num_tomos) # flat tensor form
+        binary_flat_mask_prompts = (flat_mask_prompts > 0.9).bool() # binarize the mask prompts for SAM2 input conservatively
+        preds = self.model(data, flat_box_prompts, binary_flat_mask_prompts) # forward pass through SAM2
+        masks = flat_mask_prompts.view(data.num_tomos, data.num_slices, *flat_mask_prompts.shape[-2:]) # reshape to [B, D, H, W]
+        
+        out = {
+            "preds": preds,
+            "prompts": masks
+        }
+        
         # Pad outputs if truncated
         if do_truncate:
             pad_size = (0, 0, 0, 0, 0, data.num_slices - MAX_SAM_DEPTH)
             for k in out:
                 out[k] = F.pad(out[k], pad_size, mode="constant", value=0)
+        if do_resize:
+            # Upsample the output to the original size
+            for k in out:
+                out[k] = F.interpolate(out[k], size=(H, W), mode="bilinear", align_corners=False)
+            # Resize the input tomogram batch to the original size
+            data.tomo_batch = F.interpolate(data.tomo_batch, size=(C, H, W), mode="trilinear", align_corners=False)
         return out
         
-    def load_state_dict(self, state_dict: Dict[str, Tensor], strict: bool = False, assign: bool = True) -> Tuple:
+    def load_sam_state_dict(self, state_dict: Dict[str, Tensor], strict: bool = False, assign: bool = True) -> Tuple:
         """Override load_state_dict to handle loading of SAM2 weights."""
         return self.model.load_state_dict(state_dict, strict=strict, assign=assign)
 
@@ -99,67 +172,27 @@ class SAM2(BaseModel):
 class SAM2Train(SAM2Base):
     """SAMv2 model implementation."""
 
-    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), use_box_prompts: bool = True, freeze_decoder: bool = False, **kwargs) -> None:
+    def __init__(self, image_encoder: nn.Module, memory_attention: nn.Module, memory_encoder: nn.Module, num_init_cond_slices: Tuple[int, int] = (1, 1), rand_init_cond_slices: Tuple[bool, bool] = (True, False), **kwargs) -> None:
         """Initializes the CryoVIT model with specific convolutional and synthesis blocks."""
         super(SAM2Train, self).__init__(image_encoder, memory_attention, memory_encoder, **kwargs)
         self.num_init_cond_slices = num_init_cond_slices
         self.rand_init_cond_slices = rand_init_cond_slices
-
-        self.prompt_predictor = PromptPredictor(in_channels=self.hidden_dim, out_channels=1)
-        self.use_box_prompts = use_box_prompts
-
-        # Only fine-tune on the prompt predictor and the mask decoder
-        self.freeze_parameters()
-        if freeze_decoder:
-            for p in self.sam_mask_decoder.parameters():
-                p.requires_grad = False
-                
-    def freeze_parameters(self):
-        """Freezes all model parameters except for the prompt predictor and mask decoder."""
-        for p in self.image_encoder.parameters():
-            p.requires_grad = False
-        for p in self.sam_prompt_encoder.parameters():
-            p.requires_grad = False
-        for p in self.memory_encoder.parameters():
-            p.requires_grad = False
-        for p in self.memory_attention.parameters():
-            p.requires_grad = False
                 
     def _apply_lora_to_mask_decoder(self):
         """Delay applying LoRA to the mask decoder until after loading weights."""
-        decoder_factory = LoRAMaskDecoderFactory(lora_r=64, lora_alpha=128) # Using alpha=r*2 as recommended by Microsoft
+        decoder_factory = LoRAMaskDecoderFactory(lora_r=256, lora_alpha=512) # Using alpha=r*2 as recommended by Microsoft
         self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
-    def forward(self, data: BatchedTomogramData) -> Tensor:
+    def forward(self, data: BatchedTomogramData, box_prompts, mask_prompts) -> Tensor:
         """Forward pass for the SAMv2 model."""
-        C, H, W = data.tomo_batch.shape[-3:] # [H, W]
-        do_resize = (H != self.image_size or W != self.image_size)
-
-        if do_resize:
-            # Resize the input tomogram batch to the target size
-            data.tomo_batch = F.interpolate(data.tomo_batch, size=(C, self.image_size, self.image_size), mode="trilinear", align_corners=False)
-        
-        flat_tensor = data.flat_tomo_batch # [BxDxCxHxW] -> [[BxD]xCxHxW]
-
-        # precompute image features on all slices before tracking for mask generation
-        backbone_out = self.forward_image(flat_tensor)
-        
-        backbone_out = self.prepare_prompt_inputs(backbone_out, data)
-        
-        out, mask_out = self.forward_tracking(backbone_out, data)
+        backbone_out = self.forward_image(data.flat_tomo_batch)
+        mid_slice_idx = data.num_slices // 2
+        backbone_out = self.prepare_prompt_inputs(backbone_out, box_prompts, mask_prompts, data, start_slice_idx=mid_slice_idx)
+        out = self.forward_tracking(backbone_out, data)
         out = torch.sigmoid(out)
+        return out
 
-        if do_resize:
-            # Upsample the output to the original size
-            out = F.interpolate(out, size=(H, W), mode="bilinear", align_corners=False)
-            mask_out = F.interpolate(mask_out, size=(H, W), mode="bilinear", align_corners=False)
-
-        return {
-            "preds": out,
-            "prompts": mask_out
-        }
-
-    def prepare_prompt_inputs(self, backbone_out: Dict[str, Any], data: BatchedTomogramData, start_slice_idx: int = 0) -> Dict[str, Any]:
+    def prepare_prompt_inputs(self, backbone_out: Dict[str, Any], box_prompts: Dict[str, Any], mask_prompts: Dict[str, Any], data: BatchedTomogramData, start_slice_idx: int = 0) -> Dict[str, Any]:
         """Prepare predicted masks."""
         backbone_out["num_slices"] = data.num_slices
         # Setup prompt parameters
@@ -184,19 +217,15 @@ class SAM2Train(SAM2Base):
                 replace=False
             ).tolist()
         backbone_out["init_cond_slices"] = init_cond_slices
-        backbone_out["slices_not_in_init_cond"] = [n for n in range(start_slice_idx, backbone_out["num_slices"]) if n not in init_cond_slices]
+        backbone_out["slices_not_in_init_cond"] = [n for n in range(data.num_slices) if n not in init_cond_slices]
 
-        # Prepare mask and point inputs for slices
-        backbone_out["point_inputs_per_slice"] = {}
+        # Prepare mask and box inputs for slices
+        backbone_out["box_inputs_per_slice"] = {}
         backbone_out["mask_inputs_per_slice"] = {}
-        flat_mask_prompts = self.prompt_predictor(backbone_out["backbone_fpn"]) # flat tensor form
-        backbone_out["flat_mask_prompts"] = flat_mask_prompts
-        for n in range(data.num_slices):
+        for n in init_cond_slices:
             idxs = data.index_to_flat_batch(n)
-            if self.use_box_prompts:
-                coords, labels = _sample_box_from_mask(flat_mask_prompts[idxs])
-                backbone_out["point_inputs_per_slice"][n] = {"point_coords": coords, "point_labels": labels}
-            backbone_out["mask_inputs_per_slice"][n] = flat_mask_prompts[idxs]
+            backbone_out["box_inputs_per_slice"][n] = box_prompts[idxs] * self.sam_prompt_encoder.input_image_size[0]
+            backbone_out["mask_inputs_per_slice"][n] = mask_prompts[idxs]
 
         return backbone_out
 
@@ -229,7 +258,7 @@ class SAM2Train(SAM2Base):
                 current_vision_feats=current_vision_feats,
                 current_vision_pos_embeds=current_vision_pos_embeds,
                 feat_sizes=feat_sizes,
-                point_inputs=backbone_out["point_inputs_per_slice"].get(slice_id, None),
+                box_inputs=backbone_out["box_inputs_per_slice"].get(slice_id, None),
                 mask_inputs=backbone_out["mask_inputs_per_slice"].get(slice_id, None),
                 output_dict=output_dict,
                 num_slices=num_slices,
@@ -240,7 +269,6 @@ class SAM2Train(SAM2Base):
                 output_dict["cond_frame_outputs"][slice_id] = current_out
             else:
                 output_dict["non_cond_frame_outputs"][slice_id] = current_out
-
         if return_dict:
             return output_dict
 
@@ -254,16 +282,16 @@ class SAM2Train(SAM2Base):
             preds = F.interpolate(output_dict["pred_masks"], scale_factor=4, mode="bilinear", align_corners=False)
             pred_output.append(preds)
         total_output = torch.cat(pred_output, dim=1)
-        mask_output = backbone_out["flat_mask_prompts"].view(-1, num_slices, preds.shape[-2], preds.shape[-1])
-        return total_output, mask_output
 
-    def track_step(self, slice_id: int, is_init_cond_slice: bool, current_vision_feats: Tensor, current_vision_pos_embeds: Tensor, feat_sizes: Tensor, point_inputs: Optional[Tensor], mask_inputs: Optional[Tensor], output_dict: Dict[str, Any], num_slices: int) -> None:
+        return total_output
+
+    def track_step(self, slice_id: int, is_init_cond_slice: bool, current_vision_feats: Tensor, current_vision_pos_embeds: Tensor, feat_sizes: Tensor, box_inputs: Optional[Tensor], mask_inputs: Optional[Tensor], output_dict: Dict[str, Any], num_slices: int) -> None:
         # Run the tracking step for the current slice
-        current_out, sam_outputs, _, _ = self._track_step(slice_id, is_init_cond_slice, current_vision_feats, current_vision_pos_embeds, feat_sizes, point_inputs, mask_inputs, output_dict, num_slices, False, None)
+        current_out, sam_outputs, _, _ = self._track_step(slice_id, is_init_cond_slice, current_vision_feats, current_vision_pos_embeds, feat_sizes, box_inputs, mask_inputs, output_dict, num_slices, False, None)
 
         # Only save essential outputs to reduce memory usage
         (
-            _,
+            low_res_multimasks,
             _,
             _,
             low_res_masks,
@@ -271,6 +299,10 @@ class SAM2Train(SAM2Base):
             obj_ptr,
             object_score_logits,
         ) = sam_outputs
+        # Combine multimask outputs into one mask by taking the max
+        if low_res_multimasks is not None:
+            print("low_res_multimasks shape:", low_res_multimasks.shape)
+            low_res_masks = torch.max(low_res_multimasks, dim=1, keepdim=True).values
         current_out["pred_masks"] = low_res_masks
         current_out["obj_ptr"] = obj_ptr
         
@@ -279,7 +311,7 @@ class SAM2Train(SAM2Base):
         self._encode_memory_in_output(
             current_vision_feats,
             feat_sizes,
-            point_inputs,
+            None,
             True, # run_mem_encoder
             high_res_masks,
             object_score_logits,
@@ -287,185 +319,181 @@ class SAM2Train(SAM2Base):
         )
 
         return current_out
-
-    def _prepare_memory_conditioned_features(
+    
+    def _track_step(
         self,
         frame_idx,
         is_init_cond_frame,
         current_vision_feats,
         current_vision_pos_embeds,
         feat_sizes,
+        box_inputs,
+        mask_inputs,
         output_dict,
         num_frames,
-        track_in_reverse=False,  # tracking in reverse time order (for demo usage)
+        track_in_reverse,
+        prev_sam_mask_logits,
     ):
-        """Fuse the current frame's visual feature map with previous memory. Overriding SAM2 implementation to remove memory pinning."""
-        B = current_vision_feats[-1].size(1)  # batch size on this frame
-        C = self.hidden_dim
-        H, W = feat_sizes[-1]  # top-level (lowest-resolution) feature size
-        device = current_vision_feats[-1].device
-        # The case of `self.num_maskmem == 0` below is primarily used for reproducing SAM on images.
-        # In this case, we skip the fusion with any memory.
-        if self.num_maskmem == 0:  # Disable memory and skip fusion
-            pix_feat = current_vision_feats[-1].permute(1, 2, 0).view(B, C, H, W)
-            return pix_feat
-
-        num_obj_ptr_tokens = 0
-        tpos_sign_mul = -1 if track_in_reverse else 1
-        # Step 1: condition the visual features of the current frame on previous memories
-        if not is_init_cond_frame:
-            # Retrieve the memories encoded with the maskmem backbone
-            to_cat_memory, to_cat_memory_pos_embed = [], []
-            # Add conditioning frames's output first (all cond frames have t_pos=0 for
-            # when getting temporal positional embedding below)
-            assert len(output_dict["cond_frame_outputs"]) > 0
-            # Select a maximum number of temporally closest cond frames for cross attention
-            cond_outputs = output_dict["cond_frame_outputs"]
-            selected_cond_outputs, unselected_cond_outputs = select_closest_cond_frames(
-                frame_idx, cond_outputs, self.max_cond_frames_in_attn
-            )
-            t_pos_and_prevs = [(0, out) for out in selected_cond_outputs.values()]
-            # Add last (self.num_maskmem - 1) frames before current frame for non-conditioning memory
-            # the earliest one has t_pos=1 and the latest one has t_pos=self.num_maskmem-1
-            # We also allow taking the memory frame non-consecutively (with stride>1), in which case
-            # we take (self.num_maskmem - 2) frames among every stride-th frames plus the last frame.
-            stride = 1 if self.training else self.memory_temporal_stride_for_eval
-            for t_pos in range(1, self.num_maskmem):
-                t_rel = self.num_maskmem - t_pos  # how many frames before current frame
-                if t_rel == 1:
-                    # for t_rel == 1, we take the last frame (regardless of r)
-                    if not track_in_reverse:
-                        # the frame immediately before this frame (i.e. frame_idx - 1)
-                        prev_frame_idx = frame_idx - t_rel
-                    else:
-                        # the frame immediately after this frame (i.e. frame_idx + 1)
-                        prev_frame_idx = frame_idx + t_rel
-                else:
-                    # for t_rel >= 2, we take the memory frame from every r-th frames
-                    if not track_in_reverse:
-                        # first find the nearest frame among every r-th frames before this frame
-                        # for r=1, this would be (frame_idx - 2)
-                        prev_frame_idx = ((frame_idx - 2) // stride) * stride
-                        # then seek further among every r-th frames
-                        prev_frame_idx = prev_frame_idx - (t_rel - 2) * stride
-                    else:
-                        # first find the nearest frame among every r-th frames after this frame
-                        # for r=1, this would be (frame_idx + 2)
-                        prev_frame_idx = -(-(frame_idx + 2) // stride) * stride
-                        # then seek further among every r-th frames
-                        prev_frame_idx = prev_frame_idx + (t_rel - 2) * stride
-                out = output_dict["non_cond_frame_outputs"].get(prev_frame_idx, None)
-                if out is None:
-                    # If an unselected conditioning frame is among the last (self.num_maskmem - 1)
-                    # frames, we still attend to it as if it's a non-conditioning frame.
-                    out = unselected_cond_outputs.get(prev_frame_idx, None)
-                t_pos_and_prevs.append((t_pos, out))
-
-            for t_pos, prev in t_pos_and_prevs:
-                if prev is None:
-                    continue  # skip padding frames
-                # "maskmem_features" might have been offloaded to CPU in demo use cases,
-                # so we load it back to GPU (it's a no-op if it's already on GPU).
-                feats = prev["maskmem_features"].to(device, non_blocking=True)
-                to_cat_memory.append(feats.flatten(2).permute(2, 0, 1))
-                # Spatial positional encoding (it might have been offloaded to CPU in eval)
-                maskmem_enc = prev["maskmem_pos_enc"][-1].to(device)
-                maskmem_enc = maskmem_enc.flatten(2).permute(2, 0, 1)
-                # Temporal positional encoding
-                maskmem_enc = (
-                    maskmem_enc + self.maskmem_tpos_enc[self.num_maskmem - t_pos - 1]
-                )
-                to_cat_memory_pos_embed.append(maskmem_enc)
-
-            # Construct the list of past object pointers
-            if self.use_obj_ptrs_in_encoder:
-                max_obj_ptrs_in_encoder = min(num_frames, self.max_obj_ptrs_in_encoder)
-                # First add those object pointers from selected conditioning frames
-                # (optionally, only include object pointers in the past during evaluation)
-                if not self.training and self.only_obj_ptrs_in_the_past_for_eval:
-                    ptr_cond_outputs = {
-                        t: out
-                        for t, out in selected_cond_outputs.items()
-                        if (t >= frame_idx if track_in_reverse else t <= frame_idx)
-                    }
-                else:
-                    ptr_cond_outputs = selected_cond_outputs
-                pos_and_ptrs = [
-                    # Temporal pos encoding contains how far away each pointer is from current frame
-                    (
-                        (
-                            (frame_idx - t) * tpos_sign_mul
-                            if self.use_signed_tpos_enc_to_obj_ptrs
-                            else abs(frame_idx - t)
-                        ),
-                        out["obj_ptr"],
-                    )
-                    for t, out in ptr_cond_outputs.items()
-                ]
-                # Add up to (max_obj_ptrs_in_encoder - 1) non-conditioning frames before current frame
-                for t_diff in range(1, max_obj_ptrs_in_encoder):
-                    t = frame_idx + t_diff if track_in_reverse else frame_idx - t_diff
-                    if t < 0 or (num_frames is not None and t >= num_frames):
-                        break
-                    out = output_dict["non_cond_frame_outputs"].get(
-                        t, unselected_cond_outputs.get(t, None)
-                    )
-                    if out is not None:
-                        pos_and_ptrs.append((t_diff, out["obj_ptr"]))
-                # If we have at least one object pointer, add them to the across attention
-                if len(pos_and_ptrs) > 0:
-                    pos_list, ptrs_list = zip(*pos_and_ptrs)
-                    # stack object pointers along dim=0 into [ptr_seq_len, B, C] shape
-                    obj_ptrs = torch.stack(ptrs_list, dim=0)
-                    # a temporal positional embedding based on how far each object pointer is from
-                    # the current frame (sine embedding normalized by the max pointer num).
-                    if self.add_tpos_enc_to_obj_ptrs:
-                        t_diff_max = max_obj_ptrs_in_encoder - 1
-                        tpos_dim = C if self.proj_tpos_enc_in_obj_ptrs else self.mem_dim
-                        obj_pos = torch.tensor(pos_list, device=device)
-                        obj_pos = get_1d_sine_pe(obj_pos / t_diff_max, dim=tpos_dim)
-                        obj_pos = self.obj_ptr_tpos_proj(obj_pos)
-                        obj_pos = obj_pos.unsqueeze(1).expand(-1, B, self.mem_dim)
-                    else:
-                        obj_pos = obj_ptrs.new_zeros(len(pos_list), B, self.mem_dim)
-                    if self.mem_dim < C:
-                        # split a pointer into (C // self.mem_dim) tokens for self.mem_dim < C
-                        obj_ptrs = obj_ptrs.reshape(
-                            -1, B, C // self.mem_dim, self.mem_dim
-                        )
-                        obj_ptrs = obj_ptrs.permute(0, 2, 1, 3).flatten(0, 1)
-                        obj_pos = obj_pos.repeat_interleave(C // self.mem_dim, dim=0)
-                    to_cat_memory.append(obj_ptrs)
-                    to_cat_memory_pos_embed.append(obj_pos)
-                    num_obj_ptr_tokens = obj_ptrs.shape[0]
-                else:
-                    num_obj_ptr_tokens = 0
+        current_out = {"point_inputs": None, "box_inputs": box_inputs, "mask_inputs": mask_inputs}
+        # High-resolution feature maps for the SAM head, reshape (HW)BC => BCHW
+        if len(current_vision_feats) > 1:
+            high_res_features = [
+                x.permute(1, 2, 0).view(x.size(1), x.size(2), *s)
+                for x, s in zip(current_vision_feats[:-1], feat_sizes[:-1])
+            ]
         else:
-            # for initial conditioning frames, encode them without using any previous memory
-            if self.directly_add_no_mem_embed:
-                # directly add no-mem embedding (instead of using the transformer encoder)
-                pix_feat_with_mem = current_vision_feats[-1] + self.no_mem_embed
-                pix_feat_with_mem = pix_feat_with_mem.permute(1, 2, 0).view(B, C, H, W)
-                return pix_feat_with_mem
+            high_res_features = None
+        if mask_inputs is not None and self.use_mask_input_as_output_without_sam:
+            # When use_mask_input_as_output_without_sam=True, we directly output the mask input
+            # (see it as a GT mask) without using a SAM prompt encoder + mask decoder.
+            pix_feat = current_vision_feats[-1].permute(1, 2, 0)
+            pix_feat = pix_feat.view(-1, self.hidden_dim, *feat_sizes[-1])
+            sam_outputs = self._use_mask_as_output(
+                pix_feat, high_res_features, mask_inputs
+            )
+        else:
+            # fused the visual feature with previous memory features in the memory bank
+            pix_feat = self._prepare_memory_conditioned_features(
+                frame_idx=frame_idx,
+                is_init_cond_frame=is_init_cond_frame,
+                current_vision_feats=current_vision_feats[-1:],
+                current_vision_pos_embeds=current_vision_pos_embeds[-1:],
+                feat_sizes=feat_sizes[-1:],
+                output_dict=output_dict,
+                num_frames=num_frames,
+                track_in_reverse=track_in_reverse,
+            )
+            # apply SAM-style segmentation head
+            # here we might feed previously predicted low-res SAM mask logits into the SAM mask decoder,
+            # e.g. in demo where such logits come from earlier interaction instead of correction sampling
+            # (in this case, any `mask_inputs` shouldn't reach here as they are sent to _use_mask_as_output instead)
+            if prev_sam_mask_logits is not None:
+                assert box_inputs is not None and mask_inputs is None
+                mask_inputs = prev_sam_mask_logits
+            multimask_output = self._use_multimask(is_init_cond_frame, None)
+            sam_outputs = self._forward_sam_heads(
+                backbone_features=pix_feat,
+                box_inputs=box_inputs,
+                mask_inputs=mask_inputs,
+                high_res_features=high_res_features,
+                multimask_output=multimask_output,
+            )
 
-            # Use a dummy token on the first frame (to avoid empty memory input to tranformer encoder)
-            to_cat_memory = [self.no_mem_embed.expand(1, B, self.mem_dim)]
-            to_cat_memory_pos_embed = [self.no_mem_pos_enc.expand(1, B, self.mem_dim)]
+        return current_out, sam_outputs, high_res_features, pix_feat
 
-        # Step 2: Concatenate the memories and forward through the transformer encoder
-        memory = torch.cat(to_cat_memory, dim=0)
-        memory_pos_embed = torch.cat(to_cat_memory_pos_embed, dim=0)
+    def _forward_sam_heads(
+        self,
+        backbone_features,
+        box_inputs=None,
+        mask_inputs=None,
+        high_res_features=None,
+        multimask_output=False,
+    ):
+        """Forward SAM prompt encoders and mask heads."""
+        B = backbone_features.size(0)
+        device = backbone_features.device
+        assert backbone_features.size(1) == self.sam_prompt_embed_dim
+        assert backbone_features.size(2) == self.sam_image_embedding_size
+        assert backbone_features.size(3) == self.sam_image_embedding_size
 
-        pix_feat_with_mem = self.memory_attention(
-            curr=current_vision_feats,
-            curr_pos=current_vision_pos_embeds,
-            memory=memory,
-            memory_pos=memory_pos_embed,
-            num_obj_ptr_tokens=num_obj_ptr_tokens,
+        # a) Handle point prompts by padding with an empty point with label -1
+        sam_point_coords = torch.zeros(B, 1, 2, device=device)
+        sam_point_labels = -1 * torch.ones(B, 1, device=device)
+
+        # b) Handle mask prompts
+        if mask_inputs is not None:
+            # If mask_inputs is provided, downsize it into low-res mask input if needed
+            # and feed it as a dense mask prompt into the SAM mask encoder
+            assert len(mask_inputs.shape) == 4 and mask_inputs.shape[:2] == (B, 1)
+            if mask_inputs.shape[-2:] != self.sam_prompt_encoder.mask_input_size:
+                sam_mask_prompt = F.interpolate(
+                    mask_inputs.float(),
+                    size=self.sam_prompt_encoder.mask_input_size,
+                    align_corners=False,
+                    mode="bilinear",
+                    antialias=True,  # use antialias for downsampling
+                )
+            else:
+                sam_mask_prompt = mask_inputs
+        else:
+            # Otherwise, simply feed None (and SAM's prompt encoder will add
+            # a learned `no_mask_embed` to indicate no mask input in this case).
+            sam_mask_prompt = None
+
+        sparse_embeddings, dense_embeddings = self.sam_prompt_encoder(
+            points=(sam_point_coords, sam_point_labels),
+            boxes=box_inputs,
+            masks=sam_mask_prompt,
         )
-        # reshape the output (HW)BC => BCHW
-        pix_feat_with_mem = pix_feat_with_mem.permute(1, 2, 0).view(B, C, H, W)
-        return pix_feat_with_mem
+        (
+            low_res_multimasks,
+            ious,
+            sam_output_tokens,
+            object_score_logits,
+        ) = self.sam_mask_decoder(
+            image_embeddings=backbone_features,
+            image_pe=self.sam_prompt_encoder.get_dense_pe(),
+            sparse_prompt_embeddings=sparse_embeddings,
+            dense_prompt_embeddings=dense_embeddings,
+            multimask_output=multimask_output,
+            repeat_image=False,  # the image is already batched
+            high_res_features=high_res_features,
+        )
+        if self.pred_obj_scores:
+            is_obj_appearing = object_score_logits > 0
+
+            # Mask used for spatial memories is always a *hard* choice between obj and no obj,
+            # consistent with the actual mask prediction
+            low_res_multimasks = torch.where(
+                is_obj_appearing[:, None, None],
+                low_res_multimasks,
+                NO_OBJ_SCORE,
+            )
+
+        # convert masks from possibly bfloat16 (or float16) to float32
+        # (older PyTorch versions before 2.1 don't support `interpolate` on bf16)
+        low_res_multimasks = low_res_multimasks.float()
+        high_res_multimasks = F.interpolate(
+            low_res_multimasks,
+            size=(self.image_size, self.image_size),
+            mode="bilinear",
+            align_corners=False,
+        )
+
+        sam_output_token = sam_output_tokens[:, 0]
+        if multimask_output:
+            # take the best mask prediction (with the highest IoU estimation)
+            best_iou_inds = torch.argmax(ious, dim=-1)
+            batch_inds = torch.arange(B, device=device)
+            low_res_masks = low_res_multimasks[batch_inds, best_iou_inds].unsqueeze(1)
+            high_res_masks = high_res_multimasks[batch_inds, best_iou_inds].unsqueeze(1)
+            if sam_output_tokens.size(1) > 1:
+                sam_output_token = sam_output_tokens[batch_inds, best_iou_inds]
+        else:
+            low_res_masks, high_res_masks = low_res_multimasks, high_res_multimasks
+
+        # Extract object pointer from the SAM output token (with occlusion handling)
+        obj_ptr = self.obj_ptr_proj(sam_output_token)
+        if self.pred_obj_scores:
+            # Allow *soft* no obj ptr, unlike for masks
+            if self.soft_no_obj_ptr:
+                lambda_is_obj_appearing = object_score_logits.sigmoid()
+            else:
+                lambda_is_obj_appearing = is_obj_appearing.float()
+
+            if self.fixed_no_obj_ptr:
+                obj_ptr = lambda_is_obj_appearing * obj_ptr
+            obj_ptr = obj_ptr + (1 - lambda_is_obj_appearing) * self.no_obj_ptr
+
+        return (
+            low_res_multimasks,
+            high_res_multimasks,
+            ious,
+            low_res_masks,
+            high_res_masks,
+            obj_ptr,
+            object_score_logits,
+        )
 
 #### Model Creation and Loading ####
 
@@ -479,15 +507,15 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
     model_cfg_path = file_paths["config"]
     model_cfg = OmegaConf.load(model_cfg_path)["model"]
     model_cfg._target_ = "cryovit.models.sam2.SAM2Train" # Use cryovit SAM2 as target
-    model_cfg.image_size = 512 # Set image size to 512 (crop size for training)
+    model_cfg.image_size = 256 # Set image size to 512 (crop size for training)
+    model_cfg.use_mask_input_as_output_without_sam = False # use sam memory and mask decoder
     model_cfg._partial_ = True
     
     model = instantiate(cfg, sam_model=model_cfg, custom_kwargs=cfg.custom_kwargs)
     sd = torch.load(file_paths["weights"], map_location="cpu", weights_only=True)["model"]
-    missing_keys, unexpected_keys = model.load_state_dict(sd)
-    valid_missing_keys = [k for k in missing_keys if "prompt_predictor" not in k] # ignore added parameters
-    if valid_missing_keys:
-        logging.error(valid_missing_keys)
+    missing_keys, unexpected_keys = model.load_sam_state_dict(sd)
+    if missing_keys:
+        logging.error(missing_keys)
         raise RuntimeError()
     if unexpected_keys:
         logging.error(unexpected_keys)
@@ -535,10 +563,9 @@ def _mask_to_box(masks: Tensor) -> Tensor:
     
 def _sample_box_from_mask(masks: Tensor, noise: float = 0.1, noise_bound: int = 20, top_left_label: int = 2, bottom_right_label: int = 3) -> Tuple[Tensor, Tensor]:
     """Samples a bounding box from a mask."""
-    binary_masks = (masks > 0.5).bool()
     device = masks.device
-    B, _, H, W = binary_masks.shape
-    box_coords = _mask_to_box(binary_masks)
+    B, _, H, W = masks.shape
+    box_coords = _mask_to_box(masks)
     box_labels = torch.tensor([top_left_label, bottom_right_label], device=device, dtype=torch.int).repeat(B)
 
     if noise > 0.0:

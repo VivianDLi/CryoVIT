@@ -1,10 +1,10 @@
 _target_: cryovit.models.SAM2
 input_key: data
+lr: 1e-4
 
 custom_kwargs:
   num_init_cond_slices: [1, 1]
   rand_init_cond_slices: [True, False]
-  freeze_decoder: False
 
 #### DO NOT CHANGE ####
 

@@ -88,6 +88,12 @@ class BatchedTomogramData:
     min_slices: int
     aux_data: Optional[Dict[str, List[Any]]] = None
     
+    def pin_memory(self, device=None):
+        self.tomo_batch = self.tomo_batch.pin_memory(device=device)
+        self.tomo_sizes = self.tomo_sizes.pin_memory(device=device)
+        self.labels = self.labels.pin_memory(device=device)
+        return self
+    
     @property
     def num_tomos(self) -> int:
         """Returns the number of tomograms in the batch."""

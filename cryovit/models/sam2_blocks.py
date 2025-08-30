@@ -9,66 +9,116 @@ import torch.nn.functional as F
 
 from sam2.modeling.sam.transformer import Attention
 
+class PromptConvBlock(nn.Module):
+    """A convolutional block used in the prompt predictor."""
+    def __init__(self, in_channels: int, out_channels: int):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.Conv3d(in_channels, out_channels, kernel_size=3, padding="same"),
+            nn.InstanceNorm3d(out_channels, eps=1e-3, affine=True),
+            nn.GELU(),
+            nn.Conv3d(out_channels, out_channels, kernel_size=3, padding="same"),
+            nn.InstanceNorm3d(out_channels, eps=1e-3, affine=True),
+            nn.GELU(),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.layers(x)
+
+class PromptAnalysisBlock(nn.Module):
+    """A single block in the down-sampling UNet architecture for prompt prediction."""
+    def __init__(self, in_channels: int, out_channels: int, scale: int = 2):
+        super().__init__()
+        self.layers = nn.Sequential(
+            nn.MaxPool3d(scale),
+            PromptConvBlock(in_channels, out_channels),
+        )
+
+    def forward(self, x: Tensor) -> Tensor:
+        return self.layers(x)
+
 class PromptSynthesisBlock(nn.Module):
     """A single block in the up-sampling UNet architecture for prompt prediction."""
-    def __init__(self, in_channels: int, hidden_channels: int, skip_channels: int, out_channels: int, scale: int = 2):
+    def __init__(self, in_channels: int, skip_channels: int, out_channels: int, scale: int = 2):
         super().__init__()
-        self.upconv = nn.ConvTranspose2d(in_channels, hidden_channels, scale, stride=scale)
+        self.upconv = nn.ConvTranspose3d(in_channels, in_channels, kernel_size=scale, stride=scale)
         self.layers = nn.Sequential(
-            nn.Conv2d(hidden_channels + skip_channels, hidden_channels, kernel_size=1),
-            nn.GELU(),
-            nn.Conv2d(hidden_channels, out_channels, kernel_size=3, padding=1),
-            nn.GELU()
+            PromptConvBlock(in_channels + skip_channels, out_channels),
+            PromptConvBlock(out_channels, out_channels),
         )
+        self.scale = scale
 
     def forward(self, x: Tensor, skip_x: Tensor) -> Tensor:
         x = self.upconv(x)
+        x = F.interpolate(x, size=skip_x.shape[-3:], mode='trilinear', align_corners=True) # handle size mismatches
         x = torch.cat([x, skip_x], dim=1)
         x = self.layers(x)
         return x
 
+class PromptBoxPredictor(nn.Module):
+    """A simple box predictor using a linear layer."""
+    def __init__(self, in_channels: int):
+        super().__init__()
+        self.pool = nn.AdaptiveAvgPool2d(1)
+        self.fc = nn.Linear(in_channels, 4)  # 4 channels for box (x1, y1, x2, y2)
+
+    def forward(self, x: Tensor) -> Tensor:
+        # Global average pooling
+        B, C, D, H, W = x.shape
+        x = self.pool(x) # [B, C, D, 1, 1]
+        x = x.transpose(1, 2).view(B*D, -1, 1, 1) # [B*D, C, 1, 1]
+        x = x.flatten(1) # [B*D, C]
+        x = self.fc(x) # [B*D, 4]
+        x = torch.sigmoid(x)  # Normalize to [0, 1]
+        x1y1 = x[:, :2]
+        x2y2 = x[:, 2:] + x1y1  # Ensure x2y2 >= x1y1
+        x = torch.cat([x1y1, x2y2], dim=1) # [B*D, 4]
+        return x
+
+from torchviz import make_dot
 class PromptPredictor(nn.Module):
-    """
-    Simple UNet to predict mask prompts for the SAMv2 model from image encodings.
+    """A simple UNet to predict mask prompts for the SAMv2 model from image encodings.
     """
     
-    def __init__(self, in_channels: int = 256, hidden_channels: int = 256, out_channels: int = 1, depth: int = 2, layer_scale: int = 2, channel_dims: List[int] = [64, 32]):
+    def __init__(self, in_channels: int = 256, depth: int = 3, layer_scale: int = 2, channel_dims: List[int] = [64, 128, 256]):
         super().__init__()
         assert depth == len(channel_dims), "Depth must match the length of channel_dims"
         self.scale_factor = 4  # Scale factor for mask prediction
         # Original SAM2 has 4x patch embedding
-        self.layers = nn.ModuleList()
-        curr_channels = in_channels
-        for i in range(depth):
-            self.layers.append(
-                PromptSynthesisBlock(
-                    in_channels=curr_channels,
-                    hidden_channels=hidden_channels,
-                    skip_channels=channel_dims[i],
-                    out_channels=hidden_channels,
-                    scale=layer_scale
-                )
-            )
-            curr_channels = hidden_channels
-        self.final_conv = nn.Conv2d(hidden_channels, out_channels, kernel_size=1)
         
-        self.init_parameters()
+        self.init_conv = PromptConvBlock(in_channels, channel_dims[0])
+        
+        self.down_layers = nn.ModuleList([
+            PromptAnalysisBlock(channel_dims[i], channel_dims[i+1], scale=layer_scale)
+            for i in range(depth - 1)
+        ])
+        
+        self.up_layers = nn.ModuleList([
+            PromptSynthesisBlock(channel_dims[-i], channel_dims[-i - 1], channel_dims[-i - 1], scale=layer_scale)
+            for i in range(1, depth)
+        ])
+        
+        self.prompt_out = nn.Conv3d(channel_dims[0], 1, kernel_size=1, padding="same")
+        self.box_out = PromptBoxPredictor(channel_dims[0])
 
-    def init_parameters(self):
-        """Initializes the parameters of the model."""
-        for m in self.modules():
-            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
-                if m.bias is not None:
-                    nn.init.constant_(m.bias, 0)
-
-    def forward(self, image_features: List[Tensor]) -> Tensor:
-        x = image_features[-1]
-        for layer, skip_x in zip(self.layers, reversed(image_features[:-1])):
+    def forward(self, x: Tensor, num_batches: int) -> Tuple[Tensor, Tensor]:
+        BD, C, H, W = x.shape
+        x = x.view(num_batches, -1, C, H, W).transpose(1, 2)  # (B, C, D, H, W)
+        x = self.init_conv(x)  # (B, C', D, H, W)
+        
+        outputs = []
+        
+        for block in self.down_layers:
+            outputs.append(x)
+            x = block(x)
+        for layer, skip_x in zip(self.up_layers, reversed(outputs)):
             x = layer(x, skip_x)
-        x = self.final_conv(x)
-        x = F.interpolate(x, scale_factor=self.scale_factor, mode='bilinear', align_corners=False)
-        return torch.sigmoid(x)
+        prompt_outs = self.prompt_out(x)  # (B, 1, D, H, W)
+        prompt_outs = prompt_outs.view(BD, 1, H, W)  # (B*D, 1, H, W)
+        prompt_outs = F.interpolate(prompt_outs, scale_factor=self.scale_factor, mode='bilinear', align_corners=True)  # Upscale to original size
+        prompt_outs = torch.sigmoid(prompt_outs)  # Normalize to [0, 1]
+        box_outs = self.box_out(x)  # (B*D, 4)
+        return box_outs, prompt_outs
 
 class LoRALinear(nn.Module):
     """A linear layer with LoRA (Low-Rank Adaptation) applied."""
