@@ -505,7 +505,7 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
     model_cfg_path = file_paths["config"]
     model_cfg = OmegaConf.load(model_cfg_path)["model"]
     model_cfg._target_ = "cryovit.models.sam2.SAM2Train" # Use cryovit SAM2 as target
-    model_cfg.image_size = 256 # Set image size to 512 (crop size for training)
+    model_cfg.image_size = 512 # Set image size to 512 (crop size for training)
     model_cfg.use_mask_input_as_output_without_sam = False # use sam memory and mask decoder
     model_cfg._partial_ = True
     
