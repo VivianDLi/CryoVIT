@@ -13,7 +13,6 @@ import torch.nn.functional as F
 from torch.optim import Optimizer
 import numpy as np
 from sam2.modeling.sam2_base import SAM2Base
-from sam2.modeling.sam2_utils import select_closest_cond_frames, get_1d_sine_pe
 
 from cryovit.models.base_model import BaseModel
 from cryovit.models.sam2_blocks import PromptPredictor, LoRAMaskDecoderFactory
@@ -54,7 +53,7 @@ class SAM2(BaseModel):
         """Configures the optimizer with the initialization parameters."""
         prompt_params = {
             "params": self.prompt_predictor.parameters(),
-            "lr": 3e-3,
+            "lr": 3e-5,
         }
         decoder_params = {
             "params": self.model.parameters(),
@@ -180,7 +179,7 @@ class SAM2Train(SAM2Base):
                 
     def _apply_lora_to_mask_decoder(self):
         """Delay applying LoRA to the mask decoder until after loading weights."""
-        decoder_factory = LoRAMaskDecoderFactory(lora_r=256, lora_alpha=512) # Using alpha=r*2 as recommended by Microsoft
+        decoder_factory = LoRAMaskDecoderFactory(lora_r=128, lora_alpha=128) # Using alpha=r
         self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
     def forward(self, data: BatchedTomogramData, box_prompts, mask_prompts) -> Tensor:
@@ -301,7 +300,6 @@ class SAM2Train(SAM2Base):
         ) = sam_outputs
         # Combine multimask outputs into one mask by taking the max
         if low_res_multimasks is not None:
-            print("low_res_multimasks shape:", low_res_multimasks.shape)
             low_res_masks = torch.max(low_res_multimasks, dim=1, keepdim=True).values
         current_out["pred_masks"] = low_res_masks
         current_out["obj_ptr"] = obj_ptr
