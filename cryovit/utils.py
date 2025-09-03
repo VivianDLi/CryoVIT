@@ -3,13 +3,17 @@
 import logging
 import string
 import random
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass
 from pathlib import Path
+import pickle
 
 import h5py
 import mrcfile
+from hydra.utils import instantiate
 import numpy as np
+from torch import Tensor
+import torch
 
 #### General File Utilities ####
 
@@ -150,7 +154,7 @@ def load_labels(file_path: Union[str, Path], label_keys: List[str]) -> Dict[str,
 
 def extract_dino_features(images: List[Tensor]) -> List[Tensor]:
     """Extract DINO features from a list of images."""
-    dino_model = DINOModel()
+    dino_model = None
     features = []
     for img in images:
         feat = dino_model(img)
@@ -158,3 +162,27 @@ def extract_dino_features(images: List[Tensor]) -> List[Tensor]:
     return features
 
 #### Creation Utilities ####
+
+@dataclass
+class SavedModel:
+    name: str
+    model_type: str
+    label_key: str
+    model_cfg: Dict[str, Any]
+    weights: Dict[str, Any]
+
+def save_model(model_name: str, label_key: str, model: torch.nn.Module, model_cfg: Dict, save_path: Union[str, Path]) -> None:
+    """Save a model to a given path."""
+    weights = model.state_dict()
+    model_type = model_cfg.name.lower()
+    saved_model = SavedModel(name=model_name, model_type=model_type, label_key=label_key, model_cfg=model_cfg, weights=weights)
+    with open(save_path, "wb") as f:
+        pickle.dump(saved_model, f)
+
+def load_model(model_path: Union[str, Path]) -> Tuple[torch.nn.Module, str, str, str]:
+    """Load a model from a given path. Returns the model, model type, model name, and label key."""
+    with open(model_path, "rb") as f:
+        saved_model = pickle.load(f)
+    model = instantiate(saved_model.model_cfg)
+    model.load_state_dict(saved_model.weights)
+    return model, saved_model.model_type, saved_model.name, saved_model.label_key

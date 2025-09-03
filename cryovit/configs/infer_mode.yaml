@@ -1,0 +1,22 @@
+name: ???
+label_key: ???
+additional_keys:
+  - data
+random_seed: 42
+
+logger: {}
+
+#################### Do not modify #####################
+
+defaults:
+  - paths: default
+  - model: ???
+  - trainer: eval
+  - callbacks:
+    - rich_progress_bar
+    - test_pred_writer
+  - datamodule: ???
+  - base_experiment_config
+  - _self_
+  - override hydra/hydra_logging: rich_logger
+  - override hydra/job_logging: rich_logger

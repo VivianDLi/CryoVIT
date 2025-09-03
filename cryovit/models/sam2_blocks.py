@@ -74,8 +74,6 @@ class PromptBoxPredictor(nn.Module):
         x2y2 = x[:, 2:] + x1y1  # Ensure x2y2 >= x1y1
         x = torch.cat([x1y1, x2y2], dim=1) # [B*D, 4]
         return x
-
-from torchviz import make_dot
 class PromptPredictor(nn.Module):
     """A simple UNet to predict mask prompts for the SAMv2 model from image encodings.
     """

@@ -5,6 +5,7 @@ cryovit_dataset/*
 no_cancer/*
 outputs
 multirun
+foundation_models
 
 slurm_scripts/outputs
 slurm_scripts/nc_outputs

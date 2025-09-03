@@ -1,6 +1,7 @@
 """Defines custom types and dataclasses for model inputs and outputs."""
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict, List, Optional, NewType, Tuple
 import torch
 import numpy as np
@@ -21,6 +22,22 @@ IntTomogramData = NewType("IntTomogramData", NDArray[np.uint8])
 LabelData = NewType("LabelData", NDArray[np.uint8])
 
 #### Class Definitions ####
+
+@tensorclass
+class FileData:
+    """
+    This class represents the file data for a single tomogram.
+    
+    Attributes:
+        sample: A string representing the sample. None if not available.
+        tomo_path: A path to the raw tomogram data.
+        label_path: A path to the segmentation labels. None if not available.
+        labels: A list of strings representing the label names. None if not available.
+    """
+    tomo_path: Path
+    label_path: Optional[Path] = None
+    labels: Optional[List[str]] = None
+    sample: Optional[str] = None
 
 @tensorclass
 class TomogramData:

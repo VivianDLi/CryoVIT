@@ -1,0 +1,5 @@
+_target_: cryovit.datasets.FileDataset
+_partial_: True
+
+input_key: ${model.input_key}
+label_key: ${label_key}
