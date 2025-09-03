@@ -32,6 +32,9 @@ class SAM2(BaseModel):
     def __init__(self, sam_model: "SAM2Train", custom_kwargs, **kwargs) -> None:
         """Initializes the SAM2 model with specific convolutional and synthesis blocks."""
         super(SAM2, self).__init__(**kwargs)
+        self.prompt_lr = custom_kwargs["prompt_lr"] if "prompt_lr" in custom_kwargs else 3e-5
+        if "prompt_lr" in custom_kwargs:
+            del custom_kwargs["prompt_lr"]
         self.model = sam_model(**custom_kwargs)
         self.prompt_predictor = PromptPredictor()
         
@@ -53,7 +56,7 @@ class SAM2(BaseModel):
         """Configures the optimizer with the initialization parameters."""
         prompt_params = {
             "params": self.prompt_predictor.parameters(),
-            "lr": 3e-5,
+            "lr": self.prompt_lr,
         }
         decoder_params = {
             "params": self.model.parameters(),

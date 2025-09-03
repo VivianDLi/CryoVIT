@@ -3,6 +3,7 @@ input_key: data
 lr: 1e-4
 
 custom_kwargs:
+  prompt_lr: 3e-5
   num_init_cond_slices: [1, 1]
   rand_init_cond_slices: [True, False]
 
