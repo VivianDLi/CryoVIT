@@ -8,13 +8,6 @@ import h5py
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn.functional as F
-from sklearn.decomposition import PCA
-from umap import UMAP
-from matplotlib.colors import hsv_to_rgb
-from matplotlib.colors import rgb_to_hsv
-from PIL import Image
-from numpy.typing import NDArray
 from rich.progress import track
 
 from cryovit.config import DinoFeaturesConfig, BaseDataModule, samples, tomogram_exts

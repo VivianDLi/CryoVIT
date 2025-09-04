@@ -1,13 +1,13 @@
 """Dataset class for loading DINOv2 features and labels for CryoVIT user models."""
 
-from typing import Any
-from typing import Dict
-from typing import List
+from typing import Any, Dict, List, Optional
 
 import numpy as np
+import torch
+import torch.nn.functional as F
 from torch.utils.data import Dataset
 
-from cryovit.types import FileData, TomogramData
+from cryovit.types import FileData, IntTomogramData, TomogramData
 from cryovit.utils import load_data, load_labels
 
 class FileDataset(Dataset):
@@ -16,10 +16,11 @@ class FileDataset(Dataset):
     def __init__(
         self,
         files: List[FileData],
-        input_key: str,
-        label_key: str,
+        input_key: Optional[str],
+        label_key: Optional[str],
         train: bool = False,
-        predict: bool = False
+        predict: bool = False,
+        for_dino: bool = False,
     ) -> None:
         """Creates a new FileDataset object.
 
@@ -36,6 +37,7 @@ class FileDataset(Dataset):
         self.label_key = label_key
         self.train = train
         self.predict = predict
+        self.for_dino = for_dino
 
     def __len__(self) -> int:
         """Returns the total number of tomograms in the dataset."""
@@ -59,6 +61,8 @@ class FileDataset(Dataset):
         file_data = self.files[idx]
         data = self._load_tomogram(file_data)
 
+        if self.for_dino:
+            return self._dino_transform(data["input"])
         if self.train:
             self._random_crop(data)
 
@@ -123,3 +127,23 @@ class FileDataset(Dataset):
             hi, wi, y, z = 16 * np.array([hi, wi, y, z])
 
         data["label"] = data["label"][di : di + x, hi : hi + y, wi : wi + z]
+
+    def _dino_transform(self, data: IntTomogramData) -> torch.Tensor:
+        """Applies normalization and resizing transformations to the tomogram.
+
+        Args:
+            data (NDArray[np.uint8]): The loaded tomogram data as a numpy array.
+
+        Returns:
+            torch.Tensor: The transformed data as a PyTorch tensor.
+        """
+        scale = (14 / 16, 14 / 16)
+        _, h, w = data.shape
+        assert h % 16 == 0 and w % 16 == 0, f"Invalid height: {h} or width: {w}"
+
+        data = np.expand_dims(data, axis=1) # D, C, H, W (i.e., B, C, H, W)
+        data = np.repeat(data, 3, axis=1)
+
+        data = torch.from_numpy(data).float() # data expected to be uint8, [0-255]
+        data = self.transform(data / 255.0)
+        return F.interpolate(data, scale_factor=scale, mode="bicubic")

@@ -38,7 +38,8 @@ class FileDataModule(LightningDataModule):
         self.dataset_fn = dataset_fn
         self.dataloader_fn = dataloader_fn
 
-    def _load_files(self, data_path: Path, data_labels: Optional[Path] = None, labels: Optional[List[str]] = None) -> List[FileData]:
+    @staticmethod
+    def _load_files(data_path: Path, data_labels: Optional[Path] = None, labels: Optional[List[str]] = None) -> List[FileData]:
         if data_path.is_dir():
             file_paths  = sorted([f for f in data_path.rglob("*") if f.suffix in tomogram_exts])
         elif data_path.is_file() and data_path.suffix == ".txt":

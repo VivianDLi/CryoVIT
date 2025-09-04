@@ -4,10 +4,11 @@ from typing import List
 
 from hydra import initialize, compose
 from hydra.utils import instantiate
+import pandas as pd
 
 from cryovit.utils import load_model
 
-def run_evaluation(test_data: Path, test_labels: Path, labels: List[str], model_path: Path, result_dir: Path, visualize: bool = True) -> None:
+def run_evaluation(test_data: Path, test_labels: Path, labels: List[str], model_path: Path, result_dir: Path, visualize: bool = True) -> pd.DataFrame:
     ## Get model information
     model, model_type, model_name, label_key = load_model(model_path)
     ## Setup hydra config
@@ -35,6 +36,11 @@ def run_evaluation(test_data: Path, test_labels: Path, labels: List[str], model_
 
     print("Starting testing.")
     trainer.test(model, datamodule=datamodule)
+    
+    # Load and return metrics
+    metrics_path = cfg.paths.results_dir / "results" / f"{model_name}.csv"
+    metrics = pd.read_csv(metrics_path)
+    return metrics
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Run model evaluation given a test folder (or text file specifying files).")

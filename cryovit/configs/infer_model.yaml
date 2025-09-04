@@ -1,8 +1,5 @@
 name: ${hydra:runtime.choices.datamodule}_any_${hydra:runtime.choices.model}_${label_key}
 label_key: ???
-additional_keys:
-  - data
-random_seed: 42
 
 logger: {}
 
@@ -14,8 +11,7 @@ defaults:
   - trainer: eval
   - callbacks:
     - rich_progress_bar
-    - test_pred_writer
-  - datamodule: ???
+  - datamodule: file
   - base_experiment_config
   - _self_
   - override hydra/hydra_logging: rich_logger

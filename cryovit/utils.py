@@ -15,6 +15,8 @@ import numpy as np
 from torch import Tensor
 import torch
 
+from cryovit.models.sam2 import create_sam_model_from_weights
+
 #### General File Utilities ####
 
 def id_generator(size: int = 6, chars=string.ascii_lowercase + string.digits):
@@ -183,6 +185,11 @@ def load_model(model_path: Union[str, Path]) -> Tuple[torch.nn.Module, str, str,
     """Load a model from a given path. Returns the model, model type, model name, and label key."""
     with open(model_path, "rb") as f:
         saved_model = pickle.load(f)
-    model = instantiate(saved_model.model_cfg)
+    model_dir = Path(__file__).parent / "foundation_models"
+    if saved_model.model_cfg._target_ == "cryovit.models.SAM2":
+        # Load SAM2 pre-trained models
+        model = create_sam_model_from_weights(saved_model.model_cfg, model_dir / "SAM2")
+    else:
+        model = instantiate(saved_model.model_cfg)
     model.load_state_dict(saved_model.weights)
     return model, saved_model.model_type, saved_model.name, saved_model.label_key
