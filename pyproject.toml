@@ -56,10 +56,10 @@ build-backend = "setuptools.build_meta"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-where = ["cryovit"]
+where = ["src"]
 
 [tool.setuptools.package-data]
-"*" = ["configs/**/*.yaml"]
+"*" = ["cryovit/configs/**/*.yaml"]
 
 [tool.black]
 line-length = 79
