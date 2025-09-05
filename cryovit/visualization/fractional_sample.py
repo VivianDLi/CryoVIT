@@ -3,30 +3,13 @@
 import functools
 from pathlib import Path
 
-import matplotlib
-import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
-from statannotations.Annotator import Annotator
 
 from cryovit.visualization.utils import (
     compute_stats,
     merge_experiments,
     significance_test,
 )
-
-matplotlib.use("Agg")
-colors = sns.color_palette("deep")[:4]
-sns.set_theme(style="darkgrid", font="Open Sans")
-
-hue_palette = {
-    "3D U-Net": colors[0],
-    "CryoViT": colors[1],
-    "SAM2": colors[2],
-    "MedSAM": colors[3],
-    "CryoViT with Sparse Labels": colors[1],
-    "CryoViT with Dense Labels": colors[2],
-}
 
 
 def plot_df(
@@ -45,6 +28,24 @@ def plot_df(
         title (str): The title of the plot.
         file_name (str): Base file name for saving the plot images.
     """
+    import matplotlib
+    import matplotlib.pyplot as plt
+    import seaborn as sns
+    from statannotations.Annotator import Annotator
+
+    matplotlib.use("Agg")
+    colors = sns.color_palette("deep")[:4]
+    sns.set_theme(style="darkgrid", font="Open Sans")
+
+    hue_palette = {
+        "3D U-Net": colors[0],
+        "CryoViT": colors[1],
+        "SAM2": colors[2],
+        "MedSAM": colors[3],
+        "CryoViT with Sparse Labels": colors[1],
+        "CryoViT with Dense Labels": colors[2],
+    }
+
     fig = plt.figure(figsize=(12, 6))
     ax = plt.gca()
 

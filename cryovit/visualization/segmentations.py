@@ -2,18 +2,8 @@
 
 from pathlib import Path
 
-import cv2
 import h5py
 import numpy as np
-import seaborn as sns
-
-colors = sns.color_palette("deep")[:4]
-hue_palette = {
-    "mito": colors[0],
-    "cristae": colors[1],
-    "microtubule": colors[2],
-    "granule": colors[3],
-}
 
 
 def _process_file(
@@ -22,6 +12,17 @@ def _process_file(
     result_dir: Path,
     threshold: float = 0.5,
 ) -> None:
+    import cv2
+    import seaborn as sns
+
+    colors = sns.color_palette("deep")[:4]
+    hue_palette = {
+        "mito": colors[0],
+        "cristae": colors[1],
+        "microtubule": colors[2],
+        "granule": colors[3],
+    }
+
     label_data = {}
     sample = "unknown"
     for label, f_path in label_dict.items():
@@ -93,6 +94,16 @@ def process_experiment(
     exp_template: str,
     labels: list[str] | None,
 ) -> None:
+    import seaborn as sns
+
+    colors = sns.color_palette("deep")[:4]
+    hue_palette = {
+        "mito": colors[0],
+        "cristae": colors[1],
+        "microtubule": colors[2],
+        "granule": colors[3],
+    }
+
     result_dir.mkdir(parents=True, exist_ok=True)
 
     if labels is None:
