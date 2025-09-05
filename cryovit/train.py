@@ -7,19 +7,19 @@ from hydra.utils import instantiate
 from pytorch_lightning.loggers import TensorBoardLogger
 
 from cryovit.models.sam2 import create_sam_model_from_weights
-from cryovit.utils import id_generator, save_model
+from cryovit.utils import id_generator, load_files_from_path, save_model
 
 
 def run_training(
-    train_data: Path,
-    train_labels: Path,
+    train_data: list[Path],
+    train_labels: list[Path],
     labels: list[str],
     model_type: str,
     model_name: str,
     label_key: str,
     result_dir: Path,
-    val_data: Path | None = None,
-    val_labels: Path | None = None,
+    val_data: list[Path] | None = None,
+    val_labels: list[Path] | None = None,
     num_epochs: int = 50,
     log_training: bool = False,
 ) -> None:
@@ -51,10 +51,10 @@ def run_training(
     dataset_fn = instantiate(cfg.datamodule.dataset)
     dataloader_fn = instantiate(cfg.datamodule.dataloader)
     datamodule = instantiate(cfg.datamodule, _convert_="all")(
-        data_path=train_data,
+        data_paths=train_data,
         data_labels=train_labels,
         labels=labels,
-        val_path=val_data,
+        val_paths=val_data,
         val_labels=val_labels,
         dataloader_fn=dataloader_fn,
         dataset_fn=dataset_fn,
@@ -191,16 +191,25 @@ if __name__ == "__main__":
             val_labels is not None and val_labels.exists()
         ), "Validation labels path does not exist."
 
+    train_paths = load_files_from_path(train_data)
+    train_label_paths = load_files_from_path(train_labels)
+    val_paths = (
+        load_files_from_path(val_data) if val_data is not None else None
+    )
+    val_label_paths = (
+        load_files_from_path(val_labels) if val_labels is not None else None
+    )
+
     run_training(
-        train_data,
-        train_labels,
+        train_paths,
+        train_label_paths,
         args.labels,
         model_type,
         model_name,
         args.label_key,
         result_path,
-        val_data,
-        val_labels,
+        val_paths,
+        val_label_paths,
         num_epochs=args.num_epochs,
         log_training=args.log_training,
     )

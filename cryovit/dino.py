@@ -6,11 +6,14 @@ from hydra import compose, initialize
 from hydra.utils import instantiate
 from rich.progress import track
 
-from cryovit.datamodules import FileDataModule
 from cryovit.run.dino_features import _dino_features, _save_data, dino_model
+from cryovit.types import FileData
+from cryovit.utils import load_files_from_path
 
 
-def run_dino(train_data: Path, result_data: Path, batch_size: int) -> None:
+def run_dino(
+    train_data: list[Path], result_dir: Path, batch_size: int
+) -> None:
     ## Setup hydra config
     config_path = Path(__file__).parent / "configs"
     with initialize(
@@ -34,21 +37,16 @@ def run_dino(train_data: Path, result_data: Path, batch_size: int) -> None:
     model.eval()
 
     ## Setup dataset
-    file_list = FileDataModule._load_files(train_data)
     assert (
-        file_list is not None and len(file_list) > 0
+        len(train_data) > 0
     ), "No valid tomogram files found in the specified training data path."
+    train_file_datas = [FileData(tomo_path=f) for f in train_data]
     dataset = instantiate(cfg.datamodule.dataset)(
-        file_list, input_key=None, label_key=None, for_dino=True
+        train_file_datas, input_key=None, label_key=None, for_dino=True
     )
     dataloader = instantiate(cfg.datamodule.dataloader)(dataset=dataset)
 
-    if result_data.suffix == ".txt":
-        result_list = [
-            fd.tomo_path for fd in FileDataModule._load_files(result_data)
-        ]
-    else:
-        result_list = [result_data / f"{f.stem}_dino.hdf" for f in file_list]
+    result_list = [result_dir / f"{f.stem}.hdf" for f in train_data]
 
     ## Iterate through dataloader and extract features
     try:
@@ -82,10 +80,10 @@ if __name__ == "__main__":
         help="Directory or .txt file of training tomograms",
     )
     parser.add_argument(
-        "result_data",
+        "result_dir",
         type=str,
         required=True,
-        help="Directory or .txt file of file paths to save the DINO features",
+        help="Directory to save the DINO features",
     )
     parser.add_argument(
         "--batch_size",
@@ -96,12 +94,12 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     train_data = Path(args.train_data)
-    result_data = Path(args.result_data)
+    result_dir = Path(args.result_dir)
     batch_size = args.batch_size
 
     ## Sanity Checking
     assert train_data.exists(), "Training data path does not exist."
-    if result_data.suffix == ".txt":
-        assert result_data.exists(), "Result data .txt file does not exist."
+    result_dir.mkdir(parents=True, exist_ok=True)
 
-    run_dino(train_data, result_data, batch_size)
+    train_files = load_files_from_path(train_data)
+    run_dino(train_files, result_dir, batch_size)

@@ -8,7 +8,7 @@ from hydra import compose, initialize
 from hydra.utils import instantiate
 from rich.progress import track
 
-from cryovit.utils import load_model
+from cryovit.utils import load_files_from_path, load_model
 
 
 @torch.inference_mode()
@@ -19,7 +19,9 @@ def predict_model(data: np.ndarray, model: torch.nn.Module) -> np.ndarray:
     return preds.cpu().numpy()
 
 
-def run_inference(data_path: Path, model_path: Path, result_dir: Path) -> None:
+def run_inference(
+    data_files: list[Path], model_path: Path, result_dir: Path
+) -> None:
     ## Setup hydra config
     model, model_type, model_name, label_key = load_model(model_path)
     config_path = Path(__file__).parent / "configs"
@@ -48,8 +50,8 @@ def run_inference(data_path: Path, model_path: Path, result_dir: Path) -> None:
     dataset_fn = instantiate(cfg.datamodule.dataset)
     dataloader_fn = instantiate(cfg.datamodule.dataloader)
     datamodule = instantiate(cfg.datamodule, _convert_="all")(
-        data_path=data_path,
-        val_path=None,
+        data_paths=data_files,
+        val_paths=None,
         dataloader_fn=dataloader_fn,
         dataset_fn=dataset_fn,
     )
@@ -126,4 +128,6 @@ if __name__ == "__main__":
         result_dir.exists() and result_dir.is_dir()
     ), "Result directory either does not exist or isn't a directory."
 
-    run_inference(data, model_path, result_dir)
+    data_paths = load_files_from_path(data)
+
+    run_inference(data_paths, model_path, result_dir)

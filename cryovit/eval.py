@@ -5,12 +5,12 @@ import pandas as pd
 from hydra import compose, initialize
 from hydra.utils import instantiate
 
-from cryovit.utils import load_model
+from cryovit.utils import load_files_from_path, load_model
 
 
 def run_evaluation(
-    test_data: Path,
-    test_labels: Path,
+    test_data: list[Path],
+    test_labels: list[Path],
     labels: list[str],
     model_path: Path,
     result_dir: Path,
@@ -45,7 +45,7 @@ def run_evaluation(
     dataset_fn = instantiate(cfg.datamodule.dataset)
     dataloader_fn = instantiate(cfg.datamodule.dataloader)
     datamodule = instantiate(cfg.datamodule, _convert_="all")(
-        data_path=test_data,
+        data_paths=test_data,
         data_labels=test_labels,
         labels=labels,
         val_path=None,
@@ -134,9 +134,12 @@ if __name__ == "__main__":
         result_dir.exists() and result_dir.is_dir()
     ), "Result directory either does not exist or isn't a directory."
 
+    test_paths = load_files_from_path(test_data)
+    test_label_paths = load_files_from_path(test_labels)
+
     run_evaluation(
-        test_data,
-        test_labels,
+        test_paths,
+        test_label_paths,
         args.labels,
         model_path,
         result_dir,

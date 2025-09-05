@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from hydra.utils import instantiate
 
-from cryovit.config import BaseModel
+from cryovit.config import BaseModel, tomogram_exts
 from cryovit.models.sam2 import create_sam_model_from_weights
 
 #### General File Utilities ####
@@ -203,6 +203,22 @@ def load_labels(
             f"Unsupported file format for file {file_path}. Supported formats are .h5, .hdf5, .mrc, .mrcs, .tiff, .tif, and image folders."
         )
     return labels
+
+
+def load_files_from_path(path: Path) -> list[Path]:
+    if path.is_dir():
+        file_paths = sorted(
+            [f for f in path.rglob("*") if f.suffix in tomogram_exts]
+        )
+    elif path.is_file() and path.suffix == ".txt":
+        with open(path) as f:
+            file_paths = [Path(line.strip()) for line in f if line.strip()]
+    else:
+        raise ValueError(
+            "Data path must be a directory or a .txt file listing data files."
+        )
+    assert len(file_paths) > 0, f"No valid tomogram files found in {path}."
+    return file_paths
 
 
 #### Creation Utilities ####
