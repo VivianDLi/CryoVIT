@@ -6,17 +6,16 @@ import h5py
 import numpy as np
 import torch
 import torch.nn.functional as F
-from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
-from PIL import Image
-from sklearn.decomposition import PCA
-from tqdm import tqdm
-from umap import UMAP
+from rich.progress import track
 
 from cryovit.config import tomogram_exts
 from cryovit.types import DinoFeaturesData, FloatTomogramData, IntTomogramData
 
 
 def _calculate_pca(features: DinoFeaturesData) -> FloatTomogramData:
+    from sklearn.decomposition import PCA
+    from umap import UMAP
+
     float_features = features.astype(np.float32)  # type: ignore # PCA expects float32
     x = float_features.transpose((1, 2, 3, 0))
     x = x.reshape((-1, x.shape[-1]))  # N, C
@@ -40,6 +39,8 @@ def _calculate_pca(features: DinoFeaturesData) -> FloatTomogramData:
 def _color_features(
     features: FloatTomogramData, alpha: float = 0.0
 ) -> IntTomogramData:
+    from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
+
     # Normalize
     features = features - features.min(axis=(0, 1, 2))
     features = features / features.max(axis=(0, 1, 2))
@@ -65,6 +66,8 @@ def export_pca(
     result_dir: Path,
 ) -> None:
     """Extract PCA colormap from features and save to a specified directory."""
+    from PIL import Image
+
     np_features = _calculate_pca(features)
     np_features = _color_features(np_features)
 
@@ -98,12 +101,15 @@ def process_samples(exp_dir: Path, result_dir: Path):
     )
 
     for sample in samples:
-        print("Processing sample %s", sample)
         tomo_dir = exp_dir / sample
         tomo_names = [
             f.name for f in tomo_dir.glob("*") if f.suffix in tomogram_exts
         ]
-        for tomo_name in tqdm(tomo_names):
+        for tomo_name in track(
+            tomo_names,
+            description=f"[green]Processing {sample}",
+            total=len(tomo_names),
+        ):
             with h5py.File(tomo_dir / tomo_name) as fh:
                 data: FloatTomogramData = fh["data"][()].astype(np.float32)  # type: ignore
                 features: DinoFeaturesData = fh["dino_features"][()].astype(np.float32)  # type: ignore

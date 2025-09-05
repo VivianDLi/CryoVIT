@@ -1,19 +1,19 @@
 """Module defining base data loading functionality for CryoVIT experiments."""
 
-from pathlib import Path
-from collections.abc import Callable
 from abc import ABC, abstractmethod
+from collections.abc import Callable
+from pathlib import Path
 
-import torch
 import pandas as pd
+import torch
 from pytorch_lightning import LightningDataModule
-from torch.utils.data import DataLoader
 from torch.nn.functional import pad
+from torch.utils.data import DataLoader
 
 from cryovit.types import (
-    TomogramData,
-    BatchedTomogramMetadata,
     BatchedTomogramData,
+    BatchedTomogramMetadata,
+    TomogramData,
 )
 
 
@@ -174,7 +174,7 @@ def collate_fn(batch: list[TomogramData]) -> BatchedTomogramData:  # type: ignor
 
         # Pad data
         D = data.size()[-3]
-        if D != max_size:
+        if max_size != D:
             padding = max_size - D
             data = pad(
                 data, (0, 0, 0, 0, 0, padding), mode="constant", value=0

@@ -6,7 +6,6 @@ import warnings
 
 import hydra
 import torch
-import wandb
 from hydra.core.global_hydra import GlobalHydra
 
 from cryovit.config import BaseExperimentConfig, validate_experiment_config
@@ -41,6 +40,7 @@ def main(cfg: BaseExperimentConfig) -> None:
         logging.error(traceback.format_exc())
         result = -1
     finally:
+        import wandb
         # Free up GPU memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()

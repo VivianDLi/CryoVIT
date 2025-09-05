@@ -7,7 +7,6 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import wandb
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from sam2.modeling.sam2_base import SAM2Base
@@ -48,7 +47,7 @@ class SAM2(BaseModel):
         self.prompt_predictor = PromptPredictor()
 
         self.freeze_parameters()
-        self.log_masks = True  # whether to log predicted masks during training for debugging
+        self.log_masks = False  # whether to log predicted masks during training for debugging
 
     def freeze_parameters(self):
         """Freezes all model parameters except for the prompt predictor and mask decoder."""
@@ -98,7 +97,7 @@ class SAM2(BaseModel):
             "masks_full": mask_pred_full,
         }
 
-    def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> float:  # type: ignore
+    def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> Tensor:  # type: ignore
         """Override trainer do_step to handle losses for the prompt predictor."""
         out_dict = self._masked_predict(batch)
 
@@ -109,11 +108,13 @@ class SAM2(BaseModel):
         losses["mask_loss"] = mask_loss
         losses["total"] = losses["total"] + mask_loss
 
-        for _, m_fn in self.metric_fns[prefix.upper()].items():
+        for _, m_fn in self.metric_fns[prefix.upper()].items():  # type: ignore
             m_fn(y_pred, y_true)
 
         self.log_stats(losses, prefix, batch.num_tomos)
         if self.training and self.log_masks:
+            import wandb
+
             # debug logging predicted masks
             raw_image = (
                 batch.tomo_batch[0, batch.num_slices // 2].detach().cpu()[[0]]
@@ -699,14 +700,14 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
 
 
 def _download_model_weights(sam_dir: Path) -> dict[str, dict[str, Path]]:
-    from huggingface_hub import snapshot_download
-
     # Download base SAMv2 model
     sam2_repo, sam2_config = sam2_model
     if not (
         (sam_dir / sam2_config["weights"]).exists()
         and (sam_dir / sam2_config["config"]).exists()
     ):
+        from huggingface_hub import snapshot_download
+
         snapshot_download(
             repo_id=sam2_repo, repo_type="model", local_dir=sam_dir
         )
@@ -718,6 +719,8 @@ def _download_model_weights(sam_dir: Path) -> dict[str, dict[str, Path]]:
         (sam_dir / medsam_config["weights"]).exists()
         and (sam_dir / medsam_config["config"]).exists()
     ):
+        from huggingface_hub import snapshot_download
+
         snapshot_download(
             repo_id=medsam_repo, repo_type="model", local_dir=sam_dir
         )
