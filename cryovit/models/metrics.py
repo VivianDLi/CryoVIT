@@ -43,4 +43,4 @@ class DiceMetric(Metric):
         Returns:
             Tensor: The average Dice score across all batches.
         """
-        return self.dice_score / self.total if self.total > 0 else torch.tensor(0.0)
+        return self.dice_score / self.total if self.total > 0 else torch.tensor(0.0) # type: ignore

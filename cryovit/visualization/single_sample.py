@@ -2,7 +2,6 @@
 
 import functools
 from pathlib import Path
-from typing import Dict, List
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -11,7 +10,11 @@ import seaborn as sns
 from statannotations.Annotator import Annotator
 
 from cryovit.config import Sample
-from cryovit.visualization.utils import merge_experiments, significance_test, compute_stats
+from cryovit.visualization.utils import (
+    compute_stats,
+    merge_experiments,
+    significance_test,
+)
 
 matplotlib.use("Agg")
 colors = sns.color_palette("deep")[:4]
@@ -26,12 +29,19 @@ hue_palette = {
     "CryoViT with Dense Labels": colors[2],
 }
 
-def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: str, file_name: str):
+
+def plot_df(
+    df: pd.DataFrame,
+    pvalues: dict[str, pd.Series],
+    key: str,
+    title: str,
+    file_name: str,
+):
     """Plot DataFrame results with box and strip plots including annotations for statistical tests.
 
     Args:
         df (pd.DataFrame): DataFrame containing the data to plot.
-        pvalues (Dict[str, pd.Series]): Dictionary containing p-values for annotations for each model.
+        pvalues (dict[str, pd.Series]): dictionary containing p-values for annotations for each model.
         key (str): The column name used to group data points in the plot.
         title (str): The title of the plot.
         file_name (str): Base file name for saving the plot images.
@@ -43,19 +53,19 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
     fig = plt.figure(figsize=(12 if n_samples > 6 else 6, 6))
     ax = plt.gca()
 
-    params = dict(
-        x="sample",
-        y="dice_metric",
-        hue=key,
-        data=df,
-        order=sorted_samples,
-    )
+    params = {
+        "x": "sample",
+        "y": "dice_metric",
+        "hue": key,
+        "data": df,
+        "order": sorted_samples,
+    }
 
     sns.boxplot(
         showfliers=False,
         palette=hue_palette,
         linewidth=1,
-        medianprops=dict(linewidth=2, color="firebrick"),
+        medianprops={"linewidth": 2, "color": "firebrick"},
         ax=ax,
         **params,
     )
@@ -97,7 +107,14 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
     plt.savefig(f"{file_name}.svg")
     plt.savefig(f"{file_name}.png", dpi=300)
 
-def process_single_experiment(exp_type: str, exp_group: str, exp_names: Dict[str, List[str]], exp_dir: Path, result_dir: Path):
+
+def process_single_experiment(
+    exp_type: str,
+    exp_group: str,
+    exp_names: dict[str, list[str]],
+    exp_dir: Path,
+    result_dir: Path,
+):
     result_dir.mkdir(parents=True, exist_ok=True)
     df = merge_experiments(exp_dir, exp_names, keys=["model"])
     p_values = {}
@@ -105,10 +122,35 @@ def process_single_experiment(exp_type: str, exp_group: str, exp_names: Dict[str
         model = values[0]
         if model == "CryoViT":
             continue
-        test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key="model", test_fn="wilcoxon")
+        test_fn = functools.partial(
+            significance_test,
+            model_A="CryoViT",
+            model_B=model,
+            key="model",
+            test_fn="wilcoxon",
+        )
         m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(df, group_keys=["sample", "model"], file_name=result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
+        p_values[model] = compute_stats(
+            df,
+            group_keys=["sample", "model"],
+            file_name=str(
+                result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv"
+            ),
+            test_fn=test_fn,
+        )
     if exp_type != "sparse":
-        plot_df(df, p_values, "model", f"Model Comparison on Individual {exp_group.upper()} Samples for {exp_type.capitalize()}", result_dir / f"{exp_group}_{exp_type}_comparison")
+        plot_df(
+            df,
+            p_values,
+            "model",
+            f"Model Comparison on Individual {exp_group.upper()} Samples for {exp_type.capitalize()}",
+            str(result_dir / f"{exp_group}_{exp_type}_comparison"),
+        )
     else:
-        plot_df(df, p_values, "model", "CryoViT: Sparse vs Dense Labels Comparison on Individual Samples", result_dir / f"sparse_vs_dense_comparison")
+        plot_df(
+            df,
+            p_values,
+            "model",
+            "CryoViT: Sparse vs Dense Labels Comparison on Individual Samples",
+            str(result_dir / "sparse_vs_dense_comparison"),
+        )

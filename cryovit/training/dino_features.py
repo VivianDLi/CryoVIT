@@ -1,16 +1,16 @@
 """Script to extract DINOv2 features from tomograms."""
 
 import logging
-import warnings
 import traceback
+import warnings
 
 import hydra
 
 from cryovit.config import DinoFeaturesConfig, validate_dino_config
 from cryovit.run import dino_features
 
-
 warnings.simplefilter("ignore")
+
 
 @hydra.main(
     config_path="../configs",
@@ -33,8 +33,8 @@ def main(cfg: DinoFeaturesConfig) -> None:
 
     try:
         dino_features.run_dino(cfg)
-    except BaseException as err:
-        logging.error(f"{type(err).__name__}: {err}")
+    except BaseException as err:  # noqa: BLE001
+        logging.error("%s: %s", type(err).__name__, err)
         logging.error(traceback.format_exc())
 
 

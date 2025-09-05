@@ -1,10 +1,7 @@
 """Make plots comparing multi sample performance."""
 
 import functools
-import os
-import sys
 from pathlib import Path
-from typing import Dict, Tuple
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -15,7 +12,11 @@ from matplotlib.gridspec import GridSpec
 from statannotations.Annotator import Annotator
 
 from cryovit.config import Sample
-from cryovit.visualization.utils import merge_experiments, significance_test, compute_stats
+from cryovit.visualization.utils import (
+    compute_stats,
+    merge_experiments,
+    significance_test,
+)
 
 matplotlib.use("Agg")
 colors = sns.color_palette("deep")[:4]
@@ -37,7 +38,14 @@ group_names = {
     "fibro_cancer": "Fibroblasts and Cancer Cells",
 }
 
-def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: str, ax: Axes):
+
+def plot_df(
+    df: pd.DataFrame,
+    pvalues: dict[str, pd.Series],
+    key: str,
+    title: str,
+    ax: Axes,
+):
     """Plot DataFrame results with box and strip plots including annotations for statistical tests.
 
     Args:
@@ -50,20 +58,20 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
     num_models = df["model"].nunique()
     sorted_samples = sample_counts.sort_values(ascending=True).index.tolist()
 
-    params = dict(
-        x="sample",
-        y="dice_metric",
-        hue=key,
-        data=df,
-        order=sorted_samples,
-    )
+    params = {
+        "x": "sample",
+        "y": "dice_metric",
+        "hue": key,
+        "data": df,
+        "order": sorted_samples,
+    }
 
     sns.boxplot(
         showfliers=False,
         palette=hue_palette,
         linewidth=1,
         width=0.6,
-        medianprops=dict(linewidth=2, color="firebrick"),
+        medianprops={"linewidth": 2, "color": "firebrick"},
         ax=ax,
         **params,
     )
@@ -99,7 +107,13 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
     ax.legend(handles[:2], labels[:2], loc="lower right", shadow=True)
 
 
-def process_multi_experiment(exp_type: str, exp_group: Tuple[str, str], exp_names: Dict[str, str], exp_dir: Path, result_dir: Path):
+def process_multi_experiment(
+    exp_type: str,
+    exp_group: tuple[str, str],
+    exp_names: dict[str, list[str]],
+    exp_dir: Path,
+    result_dir: Path,
+):
     result_dir.mkdir(parents=True, exist_ok=True)
     df = merge_experiments(exp_dir, exp_names, keys=["model", "type"])
     forward_df = df[df["type"] == "forward"]
@@ -109,20 +123,36 @@ def process_multi_experiment(exp_type: str, exp_group: Tuple[str, str], exp_name
     s2_count = backward_df["sample"].nunique()
 
     fig = plt.figure(figsize=(12 if s1_count + s2_count > 6 else 6, 6))
-    gs = GridSpec(1, 2, width_ratios=[s1_count, s2_count]) # Set width ratios based on unique sample counts
-    
+    gs = GridSpec(
+        1, 2, width_ratios=[s1_count, s2_count]
+    )  # Set width ratios based on unique sample counts
+
     ax1 = fig.add_subplot(gs[0])
     ax2 = fig.add_subplot(gs[1])
-    
+
     # Plot forward comparison (s1 vs. s2)
     p_values = {}
     for values in exp_names.values():
         model = values[0]
         if model == "CryoViT":
             continue
-        test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key="model", test_fn="wilcoxon")
+        test_fn = functools.partial(
+            significance_test,
+            model_A="CryoViT",
+            model_B=model,
+            key="model",
+            test_fn="wilcoxon",
+        )
         m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(forward_df, group_keys=["sample", "model"], file_name=result_dir / f"{'_'.join(list(exp_group))}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
+        p_values[model] = compute_stats(
+            forward_df,
+            group_keys=["sample", "model"],
+            file_name=str(
+                result_dir
+                / f"{'_'.join(list(exp_group))}_{m_name}_{exp_type}_stats.csv"
+            ),
+            test_fn=test_fn,
+        )
     title = f"{group_names[exp_group[0]]} to {group_names[exp_group[1]]} Shift"
     plot_df(forward_df, p_values, "model", title, ax1)
 
@@ -132,17 +162,35 @@ def process_multi_experiment(exp_type: str, exp_group: Tuple[str, str], exp_name
         model = values[0]
         if model == "CryoViT":
             continue
-        test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key="model", test_fn="wilcoxon")
+        test_fn = functools.partial(
+            significance_test,
+            model_A="CryoViT",
+            model_B=model,
+            key="model",
+            test_fn="wilcoxon",
+        )
         m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(backward_df, group_keys=["sample", "model"], file_name=result_dir / f"{'_'.join(list(reversed(exp_group)))}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
+        p_values[model] = compute_stats(
+            backward_df,
+            group_keys=["sample", "model"],
+            file_name=str(
+                result_dir
+                / f"{'_'.join(list(reversed(exp_group)))}_{m_name}_{exp_type}_stats.csv"
+            ),
+            test_fn=test_fn,
+        )
     title = f"{group_names[exp_group[1]]} to {group_names[exp_group[0]]} Shift"
     plot_df(backward_df, p_values, "model", title, ax2)
 
     # Adjust layout and save the figure
-    fig.suptitle(f"Model Comparison Across {group_names[exp_group[0]]}/{group_names[exp_group[1]]} Domain Shifts")
+    fig.suptitle(
+        f"Model Comparison Across {group_names[exp_group[0]]}/{group_names[exp_group[1]]} Domain Shifts"
+    )
     fig.supxlabel("Sample Name (Count)")
     fig.supylabel("Dice Score")
-    
+
     plt.tight_layout()
     plt.savefig(result_dir / f"{exp_group[0]}_{exp_group[1]}_domain_shift.svg")
-    plt.savefig(result_dir / f"{exp_group[0]}_{exp_group[1]}_domain_shift.png", dpi=300)
+    plt.savefig(
+        result_dir / f"{exp_group[0]}_{exp_group[1]}_domain_shift.png", dpi=300
+    )

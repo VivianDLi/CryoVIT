@@ -1,19 +1,18 @@
 """Script to train segmentation models for CryoET data."""
 
 import logging
-import warnings
 import traceback
+import warnings
 
 import hydra
-from hydra.core.global_hydra import GlobalHydra
 import torch
 import wandb
+from hydra.core.global_hydra import GlobalHydra
 
 from cryovit.config import BaseExperimentConfig, validate_experiment_config
 from cryovit.run import train_model
 
-
-warnings.simplefilter("ignore") 
+warnings.simplefilter("ignore")
 
 
 @hydra.main(
@@ -34,10 +33,11 @@ def main(cfg: BaseExperimentConfig) -> None:
         BaseException: Captures and logs any exceptions that occur during the training process.
     """
     validate_experiment_config(cfg)
+    result = 0
     try:
-        result = train_model.run_trainer(cfg)
-    except BaseException as err:
-        logging.error(f"{type(err).__name__}: {err}")
+        train_model.run_trainer(cfg)
+    except BaseException as err:  # noqa: BLE001
+        logging.error("%s: %s", type(err).__name__, err)
         logging.error(traceback.format_exc())
         result = -1
     finally:
@@ -48,6 +48,7 @@ def main(cfg: BaseExperimentConfig) -> None:
         wandb.Settings(quiet=True)  # Disable W&B output
         if wandb.run is not None:
             wandb.finish(exit_code=result)
+
 
 if __name__ == "__main__":
     # Clear SAM2 hydra initialization if it exists

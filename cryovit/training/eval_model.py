@@ -10,8 +10,8 @@ from hydra.core.global_hydra import GlobalHydra
 from cryovit.config import BaseExperimentConfig, validate_experiment_config
 from cryovit.run import eval_model
 
-
 warnings.simplefilter("ignore")
+
 
 @hydra.main(
     config_path="../configs",
@@ -35,8 +35,8 @@ def main(cfg: BaseExperimentConfig) -> None:
 
     try:
         eval_model.run_trainer(cfg)
-    except BaseException as err:
-        logging.error(f"{type(err).__name__}: {err}")
+    except BaseException as err:  # noqa: BLE001
+        logging.error("%s: %s", type(err).__name__, err)
         logging.error(traceback.format_exc())
 
 

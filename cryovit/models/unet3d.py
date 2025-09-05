@@ -1,22 +1,20 @@
 """UNet3D model architecture for 3D tomogram segmentation."""
 
 import math
-from typing import Dict, List
-from typing import Tuple
 
 import torch
-from torch import Tensor
-from torch import nn
+from torch import Tensor, nn
 
 from cryovit.models.base_model import BaseModel
 from cryovit.types import BatchedTomogramData
+
 
 class UNet3D(BaseModel):
     """UNet3D model implementation."""
 
     def __init__(self, **kwargs) -> None:
         """Initializes the UNet3D model with specific analysis and synthesis blocks."""
-        super(UNet3D, self).__init__(**kwargs)
+        super().__init__(**kwargs)
 
         self.bottom_layer = nn.Sequential(
             nn.Conv3d(256, 384, 3, padding="same"),
@@ -51,56 +49,55 @@ class UNet3D(BaseModel):
         analysis_outputs = []
 
         for block in self.analysis_layers:
-            for layer in block.layers:
-                x = layer(x)
-
-            analysis_outputs.append(x)
-            x = block.pool(x)
+            x, prev_x = block(x)
+            analysis_outputs.append(prev_x)
 
         for layer in self.bottom_layer:
             x = layer(x)
 
         for block in self.synthesis_layers:
-            for layer in block.upconv:
+            for layer in block.upconv:  # type: ignore
                 x = layer(x)
 
             x = torch.cat([x, analysis_outputs.pop()], 1)
 
-            for i, layer in enumerate(block.layers):
+            for layer in block.layers:  # type: ignore
                 x = layer(x)
 
         x = self.output_layer(x)
         x = torch.clip(x, -5.0, 5.0)
         return x
 
-    def forward(self, batch: BatchedTomogramData) -> Tensor:
-        x = batch.tomo_batch # (B, D, C, H, W)
-        x = x.permute(0, 2, 1, 3, 4) # (B, C, D, H, W)
-        
+    def forward(self, batch: BatchedTomogramData) -> Tensor:  # type: ignore
+        x = batch.tomo_batch  # (B, D, C, H, W)
+        x = x.permute(0, 2, 1, 3, 4)  # (B, C, D, H, W)
+
         # Add padding
-        new_size = [self.PAD * math.ceil(dim / self.PAD) for dim in x.size()[-3:]]
+        new_size = [
+            self.PAD * math.ceil(dim / self.PAD) for dim in x.size()[-3:]
+        ]
         D, H, W = x.size()[-3:]
         if new_size != [D, H, W]:
             x = self._add_padding(x, new_size)
-        
-        x = self.forward_volume(x) # (B, 1, D, H, W)
-        
+
+        x = self.forward_volume(x)  # (B, 1, D, H, W)
+
         # Remove padding
         if new_size != [D, H, W]:
             x = x[..., :D, :H, :W]
-        
-        x = x.squeeze(1) # (B, D, H, W)
+
+        x = x.squeeze(1)  # (B, D, H, W)
         return torch.sigmoid(x)
 
     @torch.inference_mode()
-    def _add_padding(self, x: Tensor, new_size: List[int]) -> Tensor:
+    def _add_padding(self, x: Tensor, new_size: list[int]) -> Tensor:
         """Adds padding to the input to match the U-Net dimensions"""
         # pad to multiple of self.PAD
         D, H, W = x.size()[-3:]
         new_shape = list(x.shape[:-3]) + new_size
         x_new = torch.zeros(*new_shape, dtype=x.dtype, device=x.device)
         x_new[..., :D, :H, :W] = x
-        
+
         return x_new
 
 
@@ -130,7 +127,7 @@ class AnalysisBlock(nn.Module):
             nn.GELU(),
         )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         """Forward pass for the analysis block."""
         x = self.layers(x)
         y = self.pool(x)
@@ -140,7 +137,9 @@ class AnalysisBlock(nn.Module):
 class SynthesisBlock(nn.Module):
     """Block that performs up-sampling and feature combination in UNet3D's synthesis path."""
 
-    def __init__(self, in_channels: int, skip_channels: int, out_channels: int) -> None:
+    def __init__(
+        self, in_channels: int, skip_channels: int, out_channels: int
+    ) -> None:
         """Initializes the SynthesisBlock with up-sampling and convolutional layers.
 
         Args:

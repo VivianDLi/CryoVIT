@@ -1,18 +1,19 @@
 """Base Model class for 3D Tomogram Segmentation."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from copy import deepcopy
-from typing import Callable, Literal, Dict, Tuple
+from typing import Literal
 
 import numpy as np
 import torch
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities import grad_norm
-from torch import Tensor
-from torch import nn
+from torch import Tensor, nn
 from torch.optim import Optimizer
 
 from cryovit.types import BatchedModelResult, BatchedTomogramData
+
 
 class BaseModel(LightningModule, ABC):
     """Base model with configurable loss functions and metrics."""
@@ -22,20 +23,20 @@ class BaseModel(LightningModule, ABC):
         input_key: str,
         lr: float,
         weight_decay: float,
-        losses: Tuple[Dict],
-        metrics: Tuple[Dict],
+        losses: dict[str, Callable],
+        metrics: dict[str, Callable],
         name: str = "BaseModel",
-        **kwargs
+        **kwargs,
     ) -> None:
         """Initializes the BaseModel with specified learning rate, weight decay, loss functions, and metrics.
 
         Args:
             lr (float): Learning rate for the optimizer.
             weight_decay (float): Weight decay factor for AdamW optimizer.
-            losses (List[Dict]): List of loss function configs instances for training, validation, and testing.
-            metrics (List[Dict]): List of metric function configs for training, validation, and testing.
+            losses (list[dict]): list of loss function configs instances for training, validation, and testing.
+            metrics (list[dict]): list of metric function configs for training, validation, and testing.
         """
-        super(BaseModel, self).__init__()
+        super().__init__()
         self.name = name
         self.input_key = input_key
         self.lr = lr
@@ -43,7 +44,7 @@ class BaseModel(LightningModule, ABC):
 
         self.configure_losses(losses)
         self.configure_metrics(metrics)
-        
+
         self.save_hyperparameters()
 
     def configure_optimizers(self) -> Optimizer:
@@ -53,16 +54,16 @@ class BaseModel(LightningModule, ABC):
             lr=self.lr,
             weight_decay=self.weight_decay,
         )
-        
-    def configure_losses(self, losses: Dict[str, Callable]) -> None:
+
+    def configure_losses(self, losses: dict[str, Callable]) -> None:
         self.loss_fns = losses
-    
-    def configure_metrics(self, metrics: Dict) -> None:
+
+    def configure_metrics(self, metrics: dict[str, Callable]) -> None:
         self.metric_fns = nn.ModuleDict(
             {
-                "TRAIN": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),
-                "VAL": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),
-                "TEST": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),
+                "TRAIN": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),  # type: ignore
+                "VAL": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),  # type: ignore
+                "TEST": nn.ModuleDict({m: deepcopy(m_fn) for m, m_fn in metrics.items()}),  # type: ignore
             }
         )
 
@@ -72,63 +73,80 @@ class BaseModel(LightningModule, ABC):
         self.log_dict(norms, logger=True, on_step=True)
 
     def _masked_predict(
-        self, batch: BatchedTomogramData
-    ) -> Dict[str, Tensor]:
+        self, batch: BatchedTomogramData  # type: ignore
+    ) -> dict[str, Tensor]:
         """Performs prediction while applying a mask to the inputs and labels based on the label value."""
-        y_true = batch.labels # (B, D, H, W)
+        y_true = batch.labels  # (B, D, H, W)
 
-        y_pred_full = self(batch) # (B, D, H, W)
+        y_pred_full = self(batch)  # (B, D, H, W)
         mask = (y_true > -1.0).detach()
 
         y_pred = torch.masked_select(y_pred_full, mask).view(-1, 1)
         y_true = torch.masked_select(y_true, mask).view(-1, 1)
 
-        return {
-            "preds": y_pred,
-            "labels": y_true,
-            "preds_full":y_pred_full
-        }
+        return {"preds": y_pred, "labels": y_true, "preds_full": y_pred_full}
 
-    def compute_losses(self, y_pred: Tensor, y_true: Tensor) -> Dict[str, Tensor]:
+    def compute_losses(
+        self, y_pred: Tensor, y_true: Tensor
+    ) -> dict[str, Tensor]:
         losses = {k: v(y_pred, y_true) for k, v in self.loss_fns.items()}
         losses["total"] = sum(losses.values())
         return losses
 
-    def log_stats(self, losses: Dict[str, Tensor], prefix: Literal["train", "val", "test"], batch_size: int) -> None:
+    def log_stats(
+        self,
+        losses: dict[str, Tensor],
+        prefix: Literal["train", "val", "test"],
+        batch_size: int,
+    ) -> None:
         """Logs computed loss and metric statistics for each training or validation step."""
         # Log losses
         loss_log_dict = {f"{prefix}/loss/{k}": v for k, v in losses.items()}
         on_step = prefix == "train"
-        self.log_dict(loss_log_dict, prog_bar=True, logger=True, on_epoch=not on_step, on_step=on_step, batch_size=batch_size)
-        
+        self.log_dict(
+            loss_log_dict,
+            prog_bar=True,
+            logger=True,
+            on_epoch=not on_step,
+            on_step=on_step,
+            batch_size=batch_size,
+        )
+
         # Log metrics
         metric_log_dict = {}
-        for m, m_fn in self.metric_fns[prefix.upper()].items():
+        for m, m_fn in self.metric_fns[prefix.upper()].items():  # type: ignore
             metric_log_dict[f"{prefix}/metric/{m}"] = m_fn
-        self.log_dict(metric_log_dict, prog_bar=True, logger=True, on_epoch=True, on_step=False, batch_size=batch_size)
+        self.log_dict(
+            metric_log_dict,
+            prog_bar=True,
+            logger=True,
+            on_epoch=True,
+            on_step=False,
+            batch_size=batch_size,
+        )
 
-    def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> float:
+    def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> Tensor:  # type: ignore
         """Processes a single batch of data, computes the loss and updates metrics."""
         out = self._masked_predict(batch)
         y_pred, y_true = out["preds"], out["labels"]
 
         losses = self.compute_losses(y_pred, y_true)
 
-        for _, m_fn in self.metric_fns[prefix.upper()].items():
+        for _, m_fn in self.metric_fns[prefix.upper()].items():  # type: ignore
             m_fn(y_pred, y_true)
 
         self.log_stats(losses, prefix, batch.num_tomos)
         return losses["total"]
 
-    def training_step(self, batch: BatchedTomogramData, batch_idx: int) -> float:
+    def training_step(self, batch: BatchedTomogramData, batch_idx: int) -> Tensor:  # type: ignore
         """Processes one batch during training."""
-        return self._do_step(batch, batch_idx, "train")
+        return self._do_step(batch, batch_idx, "train")  # type: ignore
 
-    def validation_step(self, batch: BatchedTomogramData, batch_idx: int) -> float:
+    def validation_step(self, batch: BatchedTomogramData, batch_idx: int) -> Tensor:  # type: ignore
         """Processes one batch during validation."""
-        return self._do_step(batch, batch_idx, "val")
+        return self._do_step(batch, batch_idx, "val")  # type: ignore
 
-    def test_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:
+    def test_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:  # type: ignore
         """Processes one batch during testing, captures predictions, and computes losses and metrics.
 
         Args:
@@ -136,18 +154,28 @@ class BaseModel(LightningModule, ABC):
             batch_idx (int): Index of the batch.
 
         Returns:
-            Dict[str, Any]: A dictionary containing test results and metrics for this batch.
+            dict[str, Any]: A dictionary containing test results and metrics for this batch.
         """
-        assert batch.aux_data is not None and "data" in batch.aux_data, "Batch aux_data must contain 'data' key for testing."
+        assert (
+            batch.aux_data is not None and "data" in batch.aux_data
+        ), "Batch aux_data must contain 'data' key for testing."
         input_data = batch.aux_data["data"]
 
         out_dict = self._masked_predict(batch)
-        y_pred, y_true, y_pred_full = out_dict["preds"], out_dict["labels"], out_dict["preds_full"]
+        y_pred, y_true, y_pred_full = (
+            out_dict["preds"],
+            out_dict["labels"],
+            out_dict["preds_full"],
+        )
         aux_data = {}
         for key in out_dict:
-            if key not in ["preds", "labels", "preds_full"] and key.endswith("full"):
+            if key not in ["preds", "labels", "preds_full"] and key.endswith(
+                "full"
+            ):
                 aux_data_full = out_dict[key]
-                aux_data[key] = [t_aux_data.cpu().numpy() for t_aux_data in aux_data_full]
+                aux_data[key] = [
+                    t_aux_data.cpu().numpy() for t_aux_data in aux_data_full
+                ]
 
         samples, tomo_names = batch.metadata.identifiers
         split_id = batch.metadata.split_id
@@ -156,9 +184,11 @@ class BaseModel(LightningModule, ABC):
         if split_id is not None:
             split_id = [s_id.item() for s_id in split_id]
 
-        losses = {k: v.item() for k, v in self.compute_losses(y_pred, y_true).items()}
+        losses = {
+            k: v.item() for k, v in self.compute_losses(y_pred, y_true).items()
+        }
         metrics = {}
-        for m, m_fn in self.metric_fns["TEST"].items():
+        for m, m_fn in self.metric_fns["TEST"].items():  # type: ignore
             score = m_fn(y_pred, y_true)
             metrics[m] = score.item()
             m_fn.reset()
@@ -170,25 +200,31 @@ class BaseModel(LightningModule, ABC):
             split_id=split_id,
             data=input_data,
             label=labels,
-            preds=preds,
+            preds=preds,  # type: ignore
             losses=losses,
             metrics=metrics,
-            aux_data=aux_data if aux_data else None
+            aux_data=aux_data if aux_data else None,
         )
-    
-    def predict_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:
+
+    def predict_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:  # type: ignore
         result = self.test_step(batch, batch_idx)
-        
+
         # Normalize to [0-255]
         for n in range(result.num_tomos):
             data = result.data[n]
             pred = result.preds[n]
-            result.data[n] = (255 * (data - data.min()) / (data.max() - data.min())).astype(np.uint8)
-            result.preds[n] = (255 * (pred - pred.min()) / (pred.max() - pred.min())).astype(np.uint8)
-            
+            result.data[n] = (
+                255 * (data - data.min()) / (data.max() - data.min())
+            ).astype(np.uint8)
+            result.preds[n] = (
+                255 * (pred - pred.min()) / (pred.max() - pred.min())
+            ).astype(np.uint8)
+
         return result
 
     @abstractmethod
     def forward(self):
         """Should be implemented in subclass."""
-        raise NotImplementedError("The forward method must be implemented by subclass.")
+        raise NotImplementedError(
+            "The forward method must be implemented by subclass."
+        )

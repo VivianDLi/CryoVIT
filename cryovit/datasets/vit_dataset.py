@@ -1,18 +1,15 @@
 """Dataset class for loading tomograms for DINOv2 models."""
 
 from pathlib import Path
-from typing import List
 
 import h5py
 import numpy as np
 import torch
 import torch.nn.functional as F
-from numpy.typing import NDArray
 from torch.utils.data import Dataset
 from torchvision.transforms import Normalize
 
 from cryovit.types import IntTomogramData
-
 
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
@@ -21,14 +18,16 @@ IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 class VITDataset(Dataset):
     """Dataset class for Vision Transformer models, loading and processing tomograms."""
 
-    def __init__(self, data_root: Path, records: List[str]) -> None:
+    def __init__(self, data_root: Path, records: list[str]) -> None:
         """Initializes a dataset object to load tomograms, applying normalization and resizing for DINOv2 models.
 
         Args:
             root (Path): Root directory where tomogram files are stored.
-            records (List[str]): A list of strings representing paths to tomogram files in the root directory.
+            records (list[str]): A list of strings representing paths to tomogram files in the root directory.
         """
-        self.root = data_root if isinstance(data_root, Path) else Path(data_root)
+        self.root = (
+            data_root if isinstance(data_root, Path) else Path(data_root)
+        )
         self.records = records
         self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
 
@@ -67,7 +66,7 @@ class VITDataset(Dataset):
         tomo_path = self.root / record
 
         with h5py.File(tomo_path) as fh:
-            return fh["data"][()]
+            return fh["data"][()]  # type: ignore
 
     def _transform(self, data: IntTomogramData) -> torch.Tensor:
         """Applies normalization and resizing transformations to the tomogram.
@@ -80,11 +79,15 @@ class VITDataset(Dataset):
         """
         scale = (14 / 16, 14 / 16)
         _, h, w = data.shape
-        assert h % 16 == 0 and w % 16 == 0, f"Invalid height: {h} or width: {w}"
+        assert (
+            h % 16 == 0 and w % 16 == 0
+        ), f"Invalid height: {h} or width: {w}"
 
-        data = np.expand_dims(data, axis=1) # D, C, H, W (i.e., B, C, H, W)
-        data = np.repeat(data, 3, axis=1)
+        np_data = np.expand_dims(data, axis=1)  # D, C, H, W (i.e., B, C, H, W)
+        np_data = np.repeat(np_data, 3, axis=1)
 
-        data = torch.from_numpy(data).float() # data expected to be uint8, [0-255]
-        data = self.transform(data / 255.0)
-        return F.interpolate(data, scale_factor=scale, mode="bicubic")
+        torch_data = torch.from_numpy(
+            np_data
+        ).float()  # data expected to be uint8, [0-255]
+        torch_data = self.transform(torch_data / 255.0)
+        return F.interpolate(torch_data, scale_factor=scale, mode="bicubic")

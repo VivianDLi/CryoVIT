@@ -2,7 +2,6 @@
 
 import functools
 from pathlib import Path
-from typing import Dict
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -10,7 +9,11 @@ import pandas as pd
 import seaborn as sns
 from statannotations.Annotator import Annotator
 
-from cryovit.visualization.utils import merge_experiments, significance_test, compute_stats
+from cryovit.visualization.utils import (
+    compute_stats,
+    merge_experiments,
+    significance_test,
+)
 
 matplotlib.use("Agg")
 colors = sns.color_palette("deep")[:4]
@@ -25,7 +28,14 @@ hue_palette = {
     "CryoViT with Dense Labels": colors[2],
 }
 
-def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: str, file_name: str):
+
+def plot_df(
+    df: pd.DataFrame,
+    pvalues: dict[str, pd.Series],
+    key: str,
+    title: str,
+    file_name: str,
+):
     """Plot DataFrame results with box and strip plots including annotations for statistical tests.
 
     Args:
@@ -38,18 +48,18 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
     fig = plt.figure(figsize=(12, 6))
     ax = plt.gca()
 
-    params = dict(
-        x="split_id",
-        y="dice_metric",
-        hue=key,
-        data=df,
-    )
+    params = {
+        "x": "split_id",
+        "y": "dice_metric",
+        "hue": key,
+        "data": df,
+    }
 
     sns.boxplot(
         showfliers=False,
         palette=hue_palette,
         linewidth=1,
-        medianprops=dict(linewidth=2, color="firebrick"),
+        medianprops={"linewidth": 2, "color": "firebrick"},
         ax=ax,
         **params,
     )
@@ -89,7 +99,13 @@ def plot_df(df: pd.DataFrame, pvalues: Dict[str, pd.Series], key: str, title: st
     plt.savefig(f"{file_name}.png", dpi=300)
 
 
-def process_fractional_experiment(exp_type: str, exp_group: str, exp_names: Dict[str, str], exp_dir: Path, result_dir: Path):
+def process_fractional_experiment(
+    exp_type: str,
+    exp_group: str,
+    exp_names: dict[str, list[str]],
+    exp_dir: Path,
+    result_dir: Path,
+):
     key = "model" if exp_type != "sparse" else "label_type"
     df = merge_experiments(exp_dir, exp_names, keys=[key])
     p_values = {}
@@ -97,10 +113,35 @@ def process_fractional_experiment(exp_type: str, exp_group: str, exp_names: Dict
         model = values[0]
         if model == "CryoViT":
             continue
-        test_fn = functools.partial(significance_test, model_A="CryoViT", model_B=model, key=key, test_fn="ttest_rel")
+        test_fn = functools.partial(
+            significance_test,
+            model_A="CryoViT",
+            model_B=model,
+            key=key,
+            test_fn="ttest_rel",
+        )
         m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(df, group_keys=["split_id", key], file_name=result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv", test_fn=test_fn)
+        p_values[model] = compute_stats(
+            df,
+            group_keys=["split_id", key],
+            file_name=str(
+                result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv"
+            ),
+            test_fn=test_fn,
+        )
     if exp_type != "sparse":
-        plot_df(df, p_values, key, f"Model Comparison on All {exp_group.upper()} Samples", result_dir / f"{exp_group}_{exp_type}_comparison")
+        plot_df(
+            df,
+            p_values,
+            key,
+            f"Model Comparison on All {exp_group.upper()} Samples",
+            str(result_dir / f"{exp_group}_{exp_type}_comparison"),
+        )
     else:
-        plot_df(df, p_values, key, "CryoViT: Sparse vs. Dense Labels Comparison on All Samples", result_dir / f"fractional_sparse_vs_dense_comparison")
+        plot_df(
+            df,
+            p_values,
+            key,
+            "CryoViT: Sparse vs. Dense Labels Comparison on All Samples",
+            str(result_dir / "fractional_sparse_vs_dense_comparison"),
+        )

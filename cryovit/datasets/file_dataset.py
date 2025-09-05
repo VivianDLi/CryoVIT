@@ -1,23 +1,29 @@
 """Dataset class for loading DINOv2 features and labels for CryoVIT user models."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import numpy as np
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
+from torchvision.transforms import Normalize
 
+from cryovit.datasets.vit_dataset import (
+    IMAGENET_DEFAULT_MEAN,
+    IMAGENET_DEFAULT_STD,
+)
 from cryovit.types import FileData, IntTomogramData, TomogramData
 from cryovit.utils import load_data, load_labels
+
 
 class FileDataset(Dataset):
     """A dataset class for handling and preprocessing tomographic data for CryoVIT models."""
 
     def __init__(
         self,
-        files: List[FileData],
-        input_key: Optional[str],
-        label_key: Optional[str],
+        files: list[FileData],
+        input_key: str | None,
+        label_key: str | None,
         train: bool = False,
         predict: bool = False,
         for_dino: bool = False,
@@ -30,7 +36,7 @@ class FileDataset(Dataset):
             label_key (str): The key in the HDF5 file to access labels.
             data_root (Path): The root directory where the tomograms are stored.
             train (bool): Flag to determine if the dataset is for training (enables transformations).
-            aux_keys (List[str]): Additional keys for auxiliary data to load from the HDF5 files.
+            aux_keys (list[str]): Additional keys for auxiliary data to load from the HDF5 files.
         """
         self.files = files
         self.input_key = input_key
@@ -38,19 +44,20 @@ class FileDataset(Dataset):
         self.train = train
         self.predict = predict
         self.for_dino = for_dino
+        self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
 
     def __len__(self) -> int:
         """Returns the total number of tomograms in the dataset."""
         return len(self.files)
 
-    def __getitem__(self, idx: int) -> TomogramData:
+    def __getitem__(self, idx: int) -> TomogramData:  # type: ignore
         """Retrieves a single item from the dataset.
 
         Args:
             idx (int): The index of the item.
 
         Returns:
-            record (Dict[str, Any]): A dictionary containing the loaded data and labels.
+            record (dict[str, Any]): A dictionary containing the loaded data and labels.
 
         Raises:
             IndexError: If index is out of the range of the dataset.
@@ -72,38 +79,48 @@ class FileDataset(Dataset):
             split_id=None,
             data=data["input"],
             label=data["label"],
-            aux_data=None
-        )
+            aux_data=None,
+        )  # type: ignore
 
-    def _load_tomogram(self, file_data: FileData) -> Dict[str, Any]:
+    def _load_tomogram(self, file_data: FileData) -> dict[str, Any]:
         """Loads a single tomogram based on the record information.
 
         Args:
             record (pd.Series): A series containing the sample and tomogram names.
 
         Returns:
-            data (Dict[str, Any]): A dictionary with input data, label, and any auxiliary data.
+            data (dict[str, Any]): A dictionary with input data, label, and any auxiliary data.
         """
         tomo_path = file_data.tomo_path
         label_path = file_data.label_path
 
         data = load_data(tomo_path, key=self.input_key)
-        labels = load_labels(label_path, keys=file_data.labels) if label_path is not None else None
+        labels = (
+            load_labels(label_path, label_keys=file_data.labels)
+            if label_path is not None and file_data.labels is not None
+            else None
+        )
         assert data is not None, f"Failed to load data from {tomo_path}"
         if labels is not None:
-            assert self.label_key in labels, f"Label key {self.label_key} not found in labels from {label_path}"
-        
+            assert (
+                self.label_key in labels
+            ), f"Label key {self.label_key} not found in labels from {label_path}"
+
         data_dict = {
             "input": data,
-            "label": labels[self.label_key] if labels is not None else None
+            "label": (
+                labels[self.label_key]
+                if labels is not None and self.label_key is not None
+                else None
+            ),
         }
         return data_dict
 
-    def _random_crop(self, data: Dict[str, Any]) -> None:
+    def _random_crop(self, data: dict[str, Any]) -> None:
         """Applies a random crop to the input data in the record dictionary.
 
         Args:
-            record (Dict[str, Any]): The record dictionary containing 'input' and 'label' data.
+            record (dict[str, Any]): The record dictionary containing 'input' and 'label' data.
         """
         max_depth = 128
         side = 32 if self.input_key == "dino_features" else 512
@@ -121,7 +138,9 @@ class FileDataset(Dataset):
         hi = np.random.choice(delta_h) if delta_h > 0 else 0
         wi = np.random.choice(delta_w) if delta_w > 0 else 0
 
-        data["input"] = data["input"][..., di : di + x, hi : hi + y, wi : wi + z]
+        data["input"] = data["input"][
+            ..., di : di + x, hi : hi + y, wi : wi + z
+        ]
 
         if self.input_key == "dino_features":
             hi, wi, y, z = 16 * np.array([hi, wi, y, z])
@@ -139,11 +158,15 @@ class FileDataset(Dataset):
         """
         scale = (14 / 16, 14 / 16)
         _, h, w = data.shape
-        assert h % 16 == 0 and w % 16 == 0, f"Invalid height: {h} or width: {w}"
+        assert (
+            h % 16 == 0 and w % 16 == 0
+        ), f"Invalid height: {h} or width: {w}"
 
-        data = np.expand_dims(data, axis=1) # D, C, H, W (i.e., B, C, H, W)
-        data = np.repeat(data, 3, axis=1)
+        np_data = np.expand_dims(data, axis=1)  # D, C, H, W (i.e., B, C, H, W)
+        np_data = np.repeat(np_data, 3, axis=1)
 
-        data = torch.from_numpy(data).float() # data expected to be uint8, [0-255]
-        data = self.transform(data / 255.0)
-        return F.interpolate(data, scale_factor=scale, mode="bicubic")
+        torch_data = torch.from_numpy(
+            np_data
+        ).float()  # data expected to be uint8, [0-255]
+        torch_data = self.transform(torch_data / 255.0)
+        return F.interpolate(torch_data, scale_factor=scale, mode="bicubic")

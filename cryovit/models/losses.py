@@ -1,8 +1,7 @@
 """Loss functions for training CryoVIT segmentation models."""
 
 import torch
-from torch import Tensor
-from torch import nn
+from torch import Tensor, nn
 from torchvision.ops import sigmoid_focal_loss
 
 
@@ -58,7 +57,7 @@ class FocalLoss(nn.Module):
         return sigmoid_focal_loss(
             y_pred,
             y_true,
-            alpha=weight,
+            alpha=weight.item(),
             gamma=self.gamma,
             reduction="mean",
         )

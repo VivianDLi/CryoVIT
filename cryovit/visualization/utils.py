@@ -1,34 +1,46 @@
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Dict, List
 
 import pandas as pd
-from scipy.stats import wilcoxon, ttest_rel
+from scipy.stats import ttest_rel, wilcoxon
+
 
 def merge_experiments(
-    exp_dir: Path, exp_names: Dict[str, List[str]], keys: List[str] = ["model"]
+    exp_dir: Path,
+    exp_names: dict[str, list[str]],
+    keys: list[str] | None = None,
 ) -> pd.DataFrame:
     """Merge multiple experiment results into a single DataFrame.
 
     Args:
         exp_dir (Path): The directory containing experiment results (.csvs).
-        exp_names (Dict[str, List[str]]): A dictionary mapping experiment subdirectory names to labels.
-        keys (List[str]): The column names to assign to the experiment labels in the merged DataFrame.
+        exp_names (dict[str, list[str]]): A dictionary mapping experiment subdirectory names to labels.
+        keys (list[str]): The column names to assign to the experiment labels in the merged DataFrame.
 
     Returns:
         pd.DataFrame: A DataFrame containing merged experiment data.
     """
+    if keys is None:
+        keys = ["model"]
     results = []
 
     for exp_name, value in exp_names.items():
         result_csv = exp_dir / f"{exp_name}.csv"
         df = pd.read_csv(result_csv)
-        for key, val in zip(keys, value):
+        for key, val in zip(keys, value, strict=True):
             df[key] = val
         results.append(df)
 
     return pd.concat(results, axis=0, ignore_index=True)
 
-def significance_test(df, model_A: str, model_B: str, key: str = "model", test_fn: str = "wilcoxon") -> float:
+
+def significance_test(
+    df,
+    model_A: str,
+    model_B: str,
+    key: str = "model",
+    test_fn: str = "wilcoxon",
+) -> float:
     """Perform a significance test with a specific function between two models on a grouped DataFrame.
 
     Args:
@@ -45,20 +57,25 @@ def significance_test(df, model_A: str, model_B: str, key: str = "model", test_f
     score_B = df[df[key] == model_B].sort_values("tomo_name").dice_metric
 
     if test_fn == "wilcoxon":
-        _, pvalue = wilcoxon(score_A, score_B, method="exact", alternative="greater")
+        _, pvalue = wilcoxon(
+            score_A, score_B, method="exact", alternative="greater"
+        )
     elif test_fn == "ttest_rel":
         _, pvalue = ttest_rel(score_A, score_B, alternative="greater")
     else:
         raise ValueError(f"Unknown test function: {test_fn}")
 
-    return pvalue
+    return pvalue  # type: ignore
 
-def compute_stats(df: pd.DataFrame, group_keys: List[str], file_name: str, test_fn: Callable) -> pd.Series:
+
+def compute_stats(
+    df: pd.DataFrame, group_keys: list[str], file_name: str, test_fn: Callable
+) -> pd.Series:
     """Compute statistical summaries for the DataFrame and save them to a file.
 
     Args:
         df (pd.DataFrame): The DataFrame to compute statistics on.
-        group_keys (List[str]): The column names used to group data for statistics. The first element is used for the p-value calculation.
+        group_keys (list[str]): The column names used to group data for statistics. The first element is used for the p-value calculation.
         file_name (str): The file path to save the statistics.
 
     Returns:
@@ -78,16 +95,20 @@ def compute_stats(df: pd.DataFrame, group_keys: List[str], file_name: str, test_
         "Dice Score Quartiles (Q1 - Q3)": lambda row: f"{row['Q1']:.2f} - {row['Q3']:.2f}",
     }
 
-    values = {col: grouped.apply(func, axis=1) for col, func in transforms.items()}
+    values = {
+        col: grouped.apply(func, axis=1) for col, func in transforms.items()
+    }
     stats_df = pd.DataFrame.from_dict(values).unstack(level=-1)
 
     pvalues = df.groupby(group_keys[0]).apply(test_fn, include_groups=False)
     pvalues_formatted = pvalues.apply(lambda x: f"{x:.2e}")
     stats_df["p-value"] = pvalues_formatted[stats_df.index]
 
-    if group_keys[0] != "split_id": # Don't count n for splits grouping (i.e., fractional sample)
+    if (
+        group_keys[0] != "split_id"
+    ):  # Don't count n for splits grouping (i.e., fractional sample)
         sample_counts = df[group_keys[0]].value_counts(ascending=True)
         stats_df = stats_df.loc[sample_counts.index]
-    stats_df.reset_index(names=group_keys[0]).to_csv(file_name, index=False)
+    stats_df.reset_index(names=group_keys[0]).to_csv(file_name, index=False)  # type: ignore
 
     return pvalues

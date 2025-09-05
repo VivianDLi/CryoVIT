@@ -1,14 +1,15 @@
 """Config file for CryoVIT experiments."""
 
+import logging
+import sys
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Tuple, Optional
-import logging
-import sys
+from typing import Any
 
 from hydra.core.config_store import ConfigStore
-from omegaconf import OmegaConf, MISSING
+from omegaconf import MISSING, OmegaConf
+
 
 class Sample(Enum):
     """Enum of all valid CryoET Samples."""
@@ -41,11 +42,23 @@ class Sample(Enum):
     CZI_Campy_C = "Campy C"
     CZI_Campy_CDel = "Campy C-Deletion"
     CZI_Campy_F = "Campy F"
-    
 
-samples: List[str] = [sample.name for sample in Sample]
-hd_samples: List[str] = ["BACHD", "dN17_BACHD", "Q109", "Q18", "Q20", "Q53", "Q53_KD", "Q66", "Q66_GRFS1", "Q66_KD", "WT"]
-tomogram_exts: List[str] = [".hdf", ".mrc"]
+
+samples: list[str] = [sample.name for sample in Sample]
+hd_samples: list[str] = [
+    "BACHD",
+    "dN17_BACHD",
+    "Q109",
+    "Q18",
+    "Q20",
+    "Q53",
+    "Q53_KD",
+    "Q66",
+    "Q66_GRFS1",
+    "Q66_KD",
+    "WT",
+]
+tomogram_exts: list[str] = [".hdf", ".mrc"]
 
 
 @dataclass
@@ -58,28 +71,31 @@ class BaseModel:
         model_dir (Optional[Path]): Optional directory to download model weights to (for SAMv2 models).
         lr (float): Learning rate for the model training.
         weight_decay (float): Weight decay (L2 penalty) rate. Default is 1e-3.
-        losses (Tuple[Dict]): Configuration for loss functions used in training.
-        metrics (Tuple[Dict]): Configuration for metrics used during model evaluation.
+        losses (tuple[dict]): Configuration for loss functions used in training.
+        metrics (tuple[dict]): Configuration for metrics used during model evaluation.
         custom_kwargs (InitVar[dict]): Optional dictionary of custom keyword arguments to pass to the model.
     """
+
     _target_: str = MISSING
     name: str = MISSING
-    
+
     input_key: str = MISSING
-    model_dir: Optional[Path] = None
+    model_dir: Path | None = None
     lr: float = MISSING
     weight_decay: float = 1e-3
-    losses: Dict = MISSING
-    metrics: Dict = MISSING
-    
-    custom_kwargs: Optional[Dict] = None
+    losses: dict = MISSING
+    metrics: dict = MISSING
+
+    custom_kwargs: dict | None = None
 
     def __post_init__(self) -> None:
         if self.custom_kwargs is not None:
             for key, value in self.custom_kwargs.items():
                 setattr(self, key, value)
-    
-        delattr(self, "custom_kwargs")  # Remove custom_kwargs from the dataclass after initialization
+
+        delattr(
+            self, "custom_kwargs"
+        )  # Remove custom_kwargs from the dataclass after initialization
 
 
 @dataclass
@@ -96,16 +112,17 @@ class BaseTrainer:
         enable_model_summary (bool): Enable model summarization.
         log_every_n_steps (Optional[int]): Frequency of logging in terms of training steps.
     """
+
     _target_: str = "pytorch_lightning.Trainer"
-    
+
     accelerator: str = "gpu"
-    devices: str = 1
+    devices: str = "1"
     precision: str = "16-mixed"
-    default_root_dir: Optional[Path] =  None
-    max_epochs: Optional[int] = None
+    default_root_dir: Path | None = None
+    max_epochs: int | None = None
     enable_checkpointing: bool = False
     enable_model_summary: bool = True
-    log_every_n_steps: Optional[int] = None
+    log_every_n_steps: int | None = None
 
 
 @dataclass
@@ -113,23 +130,24 @@ class BaseDataModule:
     """Base class for dataset configurations in CryoVIT experiments.
 
     Attributes:
-        sample (Union[Sample, Tuple[Sample]]): Specific sample or samples used for training.
+        sample (Union[Sample, tuple[Sample]]): Specific sample or samples used for training.
         split_id (Optional[int]): Optional split_id to use for validation.
-        test_sample (Union[Sample, Tuple[Sample]]): Specific sample or samples used for testing.
-        dataset (Dict): Configuration options for the dataset.
-        dataloader (Dict): Configuration options for the dataloader.
+        test_sample (Union[Sample, tuple[Sample]]): Specific sample or samples used for testing.
+        dataset (dict): Configuration options for the dataset.
+        dataloader (dict): Configuration options for the dataloader.
     """
+
     _target_: str = ""
     _partial_: bool = True
 
-    # OmegaConf doesn't support Union[Sample, Tuple[Sample]] yet, so moved type-checking to config validation instead
+    # OmegaConf doesn't support Union[Sample, tuple[Sample]] yet, so moved type-checking to config validation instead
     sample: Any = MISSING
-    split_id: Optional[int] = None
-    split_key: Optional[str] = "split_id"
-    test_sample: Optional[Any] = None
-    
-    dataset: Dict = MISSING
-    dataloader: Dict = MISSING
+    split_id: int | None = None
+    split_key: str | None = "split_id"
+    test_sample: Any | None = None
+
+    dataset: dict = MISSING
+    dataloader: dict = MISSING
 
 
 @dataclass
@@ -147,11 +165,12 @@ class ExperimentPaths:
         csv_name (str): Name of the directory in data_dir with .csv files.
         split_name(str): Name of the .csv file with training splits.
     """
+
     model_dir: Path = MISSING
     data_dir: Path = MISSING
     exp_dir: Path = MISSING
     results_dir: Path = MISSING
-    
+
     tomo_name: str = "tomograms"
     feature_name: str = "dino_features"
     dino_name: str = "DINOv2"
@@ -173,42 +192,43 @@ class DinoFeaturesConfig:
         sample (Optional[Sample]): Sample to calculate features for. None means to calculate features for all samples.
         export_features (bool): Whether to additionally save calculated features as PCA color-maps for investigation.
     """
+
     batch_size: int = 128
     dino_dir: Path = MISSING
     paths: ExperimentPaths = MISSING
-    datamodule: Dict = MISSING
-    sample: Optional[Sample] = MISSING
+    datamodule: dict = MISSING
+    sample: Sample | None = MISSING
     export_features: bool = False
 
 
 @dataclass
 class BaseExperimentConfig:
     """Base configuration for running experiment scripts.
-    
+
     Attributes:
         name (str): Name of the experiment, must be unique for each configuration.
         label_key (str): Key used to specify the training label.
-        additional_keys (Tuple[str]): Additional keys to load auxiliary data from tomograms.
+        additional_keys (tuple[str]): Additional keys to load auxiliary data from tomograms.
         random_seed (int): Random seed set for reproducibility.
         paths (ExperimentPaths): Configuration paths relevant to the experiment.
         model (BaseModel): Model configuration to use for the experiment.
         trainer (BaseTrainer): Trainer configuration to use for the experiment.
-        callbacks (Optional[List]): List of callback functions for training sessions.
-        logger (Optional[List]): List of logging functions for training sessions.
+        callbacks (Optional[list]): list of callback functions for training sessions.
+        logger (Optional[list]): list of logging functions for training sessions.
         dataset (BaseDataset): Dataset configuration to use for the experiment.
     """
-    
+
     name: str = MISSING
     label_key: str = MISSING
-    additional_keys: Tuple[str] = ()
+    additional_keys: tuple[str] = ()  # type: ignore
     random_seed: int = 42
     paths: ExperimentPaths = MISSING
     model: BaseModel = MISSING
     trainer: BaseTrainer = MISSING
-    callbacks: Dict[str, Any] = MISSING
-    logger: Dict[str, Any] = MISSING
+    callbacks: dict[str, Any] = MISSING
+    logger: dict[str, Any] = MISSING
     datamodule: BaseDataModule = MISSING
-    ckpt_path: Optional[Path] = None
+    ckpt_path: Path | None = None
     resume_ckpt: bool = False
 
 
@@ -224,6 +244,7 @@ cs.store(name="base_experiment_config", node=BaseExperimentConfig)
 
 #### Utility Functions for Configs ####\
 
+
 def validate_dino_config(cfg: DinoFeaturesConfig) -> None:
     """Validates the configuration for DINOv2 feature extraction.
 
@@ -237,7 +258,9 @@ def validate_dino_config(cfg: DinoFeaturesConfig) -> None:
         SystemExit: If any configuration parameters are missing.
     """
     missing_keys = OmegaConf.missing_keys(cfg)
-    error_msg = ["The following parameters were missing from dino_features.yaml"]
+    error_msg = [
+        "The following parameters were missing from dino_features.yaml"
+    ]
 
     for i, key in enumerate(missing_keys, 1):
         param_dict = DinoFeaturesConfig.__annotations__
@@ -247,21 +270,23 @@ def validate_dino_config(cfg: DinoFeaturesConfig) -> None:
     if missing_keys:
         logging.error("\n".join(error_msg))
         sys.exit(1)
-        
-    OmegaConf.set_struct(cfg, False)
+
+    OmegaConf.set_struct(cfg, False)  # type: ignore
+
 
 def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
     """Validates an experiment configuration.
-    
+
     Checks if all necessary parameters are present in the configuration. Logs an error and exits if any required parameters are missing.
-    
+
     Also checks that all Samples specified are valid, and logs an error and exits if any samples are not valid.
-    
+
     Args:
         cfg (BaseExperimentConfig): The configuration object to validate.
-        
+
     Raises:
-        SystemExit: If any configuration parameters are missing, or any samples are not valid, terminating the script."""
+        SystemExit: If any configuration parameters are missing, or any samples are not valid, terminating the script.
+    """
     missing_keys = OmegaConf.missing_keys(cfg)
     error_msg = ["The following parameters were missing from config:"]
 
@@ -271,7 +296,7 @@ def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
     if missing_keys:
         logging.error("\n".join(error_msg))
         sys.exit(1)
-        
+
     # Check datamodule samples are valid
     error_msg = ["The following datamodule parameters are not valid samples:"]
     invalid_samples = []
@@ -283,17 +308,17 @@ def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
     for sample in cfg.datamodule.sample:
         if sample not in samples:
             invalid_samples.append(sample)
-            
+
     if cfg.datamodule.test_sample is not None:
         for sample in cfg.datamodule.test_sample:
             if sample not in samples:
                 invalid_samples.append(sample)
-    
+
     for i, sample in enumerate(invalid_samples, 1):
         error_msg.append(f"{i}. {sample}")
-    
+
     if invalid_samples:
         logging.error("\n".join(error_msg))
         sys.exit(1)
 
-    OmegaConf.set_struct(cfg, False)
+    OmegaConf.set_struct(cfg, False)  # type: ignore
