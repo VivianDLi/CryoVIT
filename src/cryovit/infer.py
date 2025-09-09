@@ -21,13 +21,14 @@ def predict_model(data: np.ndarray, model: torch.nn.Module) -> np.ndarray:
 
 def run_inference(
     data_files: list[Path], model_path: Path, result_dir: Path
-) -> None:
-    ## Setup hydra config
+) -> list[Path]:
+    # Get model information
     model, model_type, model_name, label_key = load_model(model_path)
-    config_path = Path(__file__).parent / "configs"
+    assert model is not None, "Loaded model is None."
+    ## Setup hydra config
     with initialize(
         version_base="1.2",
-        config_path=str(config_path),
+        config_path="configs",
         job_name="infer_model",
     ):
         cfg = compose(
@@ -58,6 +59,7 @@ def run_inference(
     dataloader = datamodule.predict_dataloader()
     print("Setup dataset.")
 
+    result_paths = []
     for x in track(
         dataloader,
         description=f"[green]Predicting {label_key} with {model_name}",
@@ -87,6 +89,8 @@ def run_inference(
                     dtype=pred.dtype,
                     compression="gzip",
                 )
+            result_paths.append(result_path)
+    return result_paths
 
 
 if __name__ == "__main__":
@@ -96,7 +100,6 @@ if __name__ == "__main__":
     parser.add_argument(
         "data",
         type=str,
-        required=True,
         help="Directory or .txt file of data tomograms",
     )
     parser.add_argument(

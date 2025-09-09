@@ -122,6 +122,12 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
             "ckpt_path": cfg.ckpt_path,
             "seed": cfg.random_seed,
         }
+        if cfg.model._target_ == "cryovit.models.SAM2":
+            hparams["prompt_lr"] = (
+                cfg.model.custom_kwargs.get("prompt_lr", None)
+                if cfg.model.custom_kwargs
+                else None
+            )
         for logger in trainer.loggers:
             logger.log_hyperparams(hparams)
 

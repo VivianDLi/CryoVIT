@@ -1,4 +1,5 @@
 _target_: cryovit.datamodules.FileDataModule
+_partial_: true
 
 #### DO NOT MODIFY ####
 

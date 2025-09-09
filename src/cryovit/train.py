@@ -8,13 +8,14 @@ from pytorch_lightning.loggers import TensorBoardLogger
 
 from cryovit.models.sam2 import create_sam_model_from_weights
 from cryovit.utils import id_generator, load_files_from_path, save_model
+from cryovit.types import ModelType
 
 
 def run_training(
     train_data: list[Path],
     train_labels: list[Path],
     labels: list[str],
-    model_type: str,
+    model_type: ModelType,
     model_name: str,
     label_key: str,
     result_dir: Path,
@@ -22,12 +23,11 @@ def run_training(
     val_labels: list[Path] | None = None,
     num_epochs: int = 50,
     log_training: bool = False,
-) -> None:
+) -> Path:
     ## Setup hydra config
-    config_path = Path(__file__).parent / "configs"
     with initialize(
         version_base="1.2",
-        config_path=str(config_path),
+        config_path="configs",
         job_name="cryovit_train",
     ):
         cfg = compose(
@@ -97,6 +97,7 @@ def run_training(
     # Save model
     print("Saving model.")
     save_model(model_name, label_key, model, cfg.model, save_model_path)
+    return save_model_path
 
 
 if __name__ == "__main__":
@@ -106,13 +107,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "train_data",
         type=str,
-        required=True,
         help="Directory or .txt file of training tomograms",
     )
     parser.add_argument(
         "train_labels",
         type=str,
-        required=True,
         help="Directory or .txt file of training labels",
     )
     parser.add_argument(

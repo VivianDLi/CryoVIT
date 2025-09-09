@@ -6,10 +6,9 @@ import h5py
 import numpy as np
 import torch
 import torch.nn.functional as F
+from numpy.typing import NDArray
 from torch.utils.data import Dataset
 from torchvision.transforms import Normalize
-
-from cryovit.types import IntTomogramData
 
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
@@ -30,6 +29,7 @@ class VITDataset(Dataset):
         )
         self.records = records
         self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
+        self._printed_resize_warning = False
 
     def __len__(self) -> int:
         """Returns the number of tomograms in the dataset."""
@@ -54,7 +54,7 @@ class VITDataset(Dataset):
         data = self._load_tomogram(record)
         return self._transform(data)
 
-    def _load_tomogram(self, record: str) -> IntTomogramData:
+    def _load_tomogram(self, record: str) -> NDArray[np.uint8]:
         """Loads a tomogram from disk.
 
         Args:
@@ -68,7 +68,7 @@ class VITDataset(Dataset):
         with h5py.File(tomo_path) as fh:
             return fh["data"][()]  # type: ignore
 
-    def _transform(self, data: IntTomogramData) -> torch.Tensor:
+    def _transform(self, data: NDArray[np.uint8]) -> torch.Tensor:
         """Applies normalization and resizing transformations to the tomogram.
 
         Args:
@@ -79,6 +79,15 @@ class VITDataset(Dataset):
         """
         scale = (14 / 16, 14 / 16)
         _, h, w = data.shape
+        # Resize height and width to be multiples of 16
+        H = int(np.ceil(h / 16) * 16)
+        W = int(np.ceil(w / 16) * 16)
+        if h != H or w != W:
+            if not self._printed_resize_warning:
+                print("Resizing tomogram from", (h, w), "to", (H, W))
+                self._printed_resize_warning = True
+            data = np.pad(data, ((0, 0), (0, H - h), (0, W - w)), mode="edge")
+            h, w = H, W
         assert (
             h % 16 == 0 and w % 16 == 0
         ), f"Invalid height: {h} or width: {w}"

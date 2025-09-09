@@ -1,7 +1,6 @@
 import argparse
 from pathlib import Path
 
-import pandas as pd
 from hydra import compose, initialize
 from hydra.utils import instantiate
 
@@ -15,14 +14,13 @@ def run_evaluation(
     model_path: Path,
     result_dir: Path,
     visualize: bool = True,
-) -> pd.DataFrame:
+) -> Path:
     ## Get model information
     model, model_type, model_name, label_key = load_model(model_path)
     ## Setup hydra config
-    config_path = Path(__file__).parent / "configs"
     with initialize(
         version_base="1.2",
-        config_path=str(config_path),
+        config_path="configs",
         job_name="cryovit_eval",
     ):
         cfg = compose(
@@ -68,10 +66,9 @@ def run_evaluation(
     print("Starting testing.")
     trainer.test(model, datamodule=datamodule)
 
-    # Load and return metrics
+    # Load and return metrics path
     metrics_path = cfg.paths.results_dir / "results" / f"{model_name}.csv"
-    metrics = pd.read_csv(metrics_path)
-    return metrics
+    return metrics_path
 
 
 if __name__ == "__main__":
@@ -81,13 +78,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "test_data",
         type=str,
-        required=True,
         help="Directory or .txt file of test tomograms",
     )
     parser.add_argument(
         "test_labels",
         type=str,
-        required=True,
         help="Directory or .txt file of test labels",
     )
     parser.add_argument(

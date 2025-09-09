@@ -6,7 +6,6 @@ import warnings
 
 import hydra
 import torch
-from hydra.core.global_hydra import GlobalHydra
 
 from cryovit.config import BaseExperimentConfig, validate_experiment_config
 from cryovit.run import train_model
@@ -41,6 +40,7 @@ def main(cfg: BaseExperimentConfig) -> None:
         result = -1
     finally:
         import wandb
+
         # Free up GPU memory
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
@@ -51,7 +51,4 @@ def main(cfg: BaseExperimentConfig) -> None:
 
 
 if __name__ == "__main__":
-    # Clear SAM2 hydra initialization if it exists
-    if GlobalHydra.instance().is_initialized():
-        GlobalHydra.instance().clear()
     main()

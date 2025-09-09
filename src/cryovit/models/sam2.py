@@ -7,6 +7,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from hydra.core.global_hydra import GlobalHydra
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
 from sam2.modeling.sam2_base import SAM2Base
@@ -17,6 +18,10 @@ from cryovit.config import BaseModel as BaseModelConfig
 from cryovit.models.base_model import BaseModel
 from cryovit.models.sam2_blocks import LoRAMaskDecoderFactory, PromptPredictor
 from cryovit.types import BatchedTomogramData
+
+# Clear SAM2 hydra initialization if it exists
+if GlobalHydra.instance().is_initialized():
+    GlobalHydra.instance().clear()
 
 sam2_model = (
     "facebook/sam2.1-hiera-tiny",

@@ -5,7 +5,6 @@ import traceback
 import warnings
 
 import hydra
-from hydra.core.global_hydra import GlobalHydra
 
 from cryovit.config import BaseExperimentConfig, validate_experiment_config
 from cryovit.run import eval_model
@@ -41,7 +40,4 @@ def main(cfg: BaseExperimentConfig) -> None:
 
 
 if __name__ == "__main__":
-    # Clear SAM2 hydra initialization if it exists
-    if GlobalHydra.instance().is_initialized():
-        GlobalHydra.instance().clear()
     main()

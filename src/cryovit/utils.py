@@ -15,6 +15,7 @@ from hydra.utils import instantiate
 
 from cryovit.config import BaseModel, tomogram_exts
 from cryovit.models.sam2 import create_sam_model_from_weights
+from cryovit.types import ModelType
 
 #### General File Utilities ####
 
@@ -75,15 +76,14 @@ def read_hdf(
 
 
 def read_mrc(mrc_file: str | Path) -> tuple[np.ndarray, FileMetadata]:
-    with mrcfile.open(mrc_file, permissive=True) as mrc:
-        data: np.ndarray = mrc.data  # type: ignore
-        drange = (float(np.min(data)), float(np.max(data)))
-        dshape = data.shape
-        dtype = data.dtype
-        nunique = len(np.unique(data))
-        return data, FileMetadata(
-            drange=drange, dshape=dshape, dtype=dtype, nunique=nunique
-        )
+    data: np.ndarray = mrcfile.read(mrc_file)
+    drange = (float(np.min(data)), float(np.max(data)))
+    dshape = data.shape
+    dtype = data.dtype
+    nunique = len(np.unique(data))
+    return data, FileMetadata(
+        drange=drange, dshape=dshape, dtype=dtype, nunique=nunique
+    )
 
 
 def read_tiff(tiff_file: str | Path) -> tuple[np.ndarray, FileMetadata]:
@@ -146,7 +146,7 @@ def load_data(file_path: str | Path, key: str | None = None) -> np.ndarray:
 def _match_label_keys_to_data(
     data: np.ndarray, label_keys: list[str], metadata: FileMetadata
 ) -> dict[str, np.ndarray]:
-    """Match label keys to data based on unique values in the data."""
+    """Match label keys to data based on unique values in the data, assuming background is 0."""
     labels = {}
     if metadata.nunique == len(label_keys):
         label_values = sorted(np.unique(data).tolist())
@@ -227,7 +227,7 @@ def load_files_from_path(path: Path) -> list[Path]:
 @dataclass
 class SavedModel:
     name: str
-    model_type: str
+    model_type: ModelType
     label_key: str
     model_cfg: BaseModel
     weights: dict[str, Any]
@@ -245,7 +245,7 @@ def save_model(
     model_type = model_cfg.name.lower()
     saved_model = SavedModel(
         name=model_name,
-        model_type=model_type,
+        model_type=ModelType(model_type),
         label_key=label_key,
         model_cfg=model_cfg,
         weights=weights,
@@ -255,20 +255,25 @@ def save_model(
 
 
 def load_model(
-    model_path: str | Path,
-) -> tuple[torch.nn.Module, str, str, str]:
+    model_path: str | Path, load_model: bool = True
+) -> tuple[torch.nn.Module | None, ModelType, str, str]:
     """Load a model from a given path. Returns the model, model type, model name, and label key."""
+    if not Path(model_path).exists():
+        raise FileNotFoundError(f"Model file {model_path} does not exist.")
     with open(model_path, "rb") as f:
         saved_model = pickle.load(f)
-    model_dir = Path(__file__).parent / "foundation_models"
-    if saved_model.model_cfg._target_ == "cryovit.models.SAM2":
-        # Load SAM2 pre-trained models
-        model = create_sam_model_from_weights(
-            saved_model.model_cfg, model_dir / "SAM2"
-        )
+    if load_model:
+        model_dir = Path(__file__).parent / "foundation_models"
+        if saved_model.model_cfg._target_ == "cryovit.models.SAM2":
+            # Load SAM2 pre-trained models
+            model = create_sam_model_from_weights(
+                saved_model.model_cfg, model_dir / "SAM2"
+            )
+        else:
+            model = instantiate(saved_model.model_cfg)
+        model.load_state_dict(saved_model.weights)
     else:
-        model = instantiate(saved_model.model_cfg)
-    model.load_state_dict(saved_model.weights)
+        model = None
     return (
         model,
         saved_model.model_type,

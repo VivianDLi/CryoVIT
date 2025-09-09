@@ -6,13 +6,13 @@ import h5py
 import numpy as np
 import torch
 import torch.nn.functional as F
+from numpy.typing import NDArray
 from rich.progress import track
 
 from cryovit.config import tomogram_exts
-from cryovit.types import DinoFeaturesData, FloatTomogramData, IntTomogramData
 
 
-def _calculate_pca(features: DinoFeaturesData) -> FloatTomogramData:
+def _calculate_pca(features: NDArray[np.float16]) -> NDArray[np.float32]:
     from sklearn.decomposition import PCA
     from umap import UMAP
 
@@ -37,8 +37,8 @@ def _calculate_pca(features: DinoFeaturesData) -> FloatTomogramData:
 
 
 def _color_features(
-    features: FloatTomogramData, alpha: float = 0.0
-) -> IntTomogramData:
+    features: NDArray[np.float32], alpha: float = 0.0
+) -> NDArray[np.uint8]:
     from matplotlib.colors import hsv_to_rgb, rgb_to_hsv
 
     # Normalize
@@ -60,16 +60,13 @@ def _color_features(
 
 
 def export_pca(
-    data: FloatTomogramData,
-    features: DinoFeaturesData,
+    data: NDArray[np.float32],
+    features: NDArray[np.float16],
     tomo_name: str,
     result_dir: Path,
 ) -> None:
     """Extract PCA colormap from features and save to a specified directory."""
     from PIL import Image
-
-    np_features = _calculate_pca(features)
-    np_features = _color_features(np_features)
 
     # Save as Images
     image_dir = result_dir / tomo_name
@@ -77,6 +74,11 @@ def export_pca(
 
     for idx in np.arange(stop=data.shape[0], step=10):  # type: ignore
         img_path = image_dir / f"{idx}.png"
+
+        # Calculate PCA and color separately per slice
+        np_features = features[:, [idx]]
+        np_features = _calculate_pca(np_features)
+        np_features = _color_features(np_features)
 
         f_img = Image.fromarray(np_features[idx][::-1])
         d_img = Image.fromarray(data[idx][::-1])
@@ -111,6 +113,6 @@ def process_samples(exp_dir: Path, result_dir: Path):
             total=len(tomo_names),
         ):
             with h5py.File(tomo_dir / tomo_name) as fh:
-                data: FloatTomogramData = fh["data"][()].astype(np.float32)  # type: ignore
-                features: DinoFeaturesData = fh["dino_features"][()].astype(np.float32)  # type: ignore
+                data: NDArray[np.float32] = fh["data"][()].astype(np.float32)  # type: ignore
+                features: NDArray[np.float16] = fh["dino_features"][()].astype(np.float32)  # type: ignore
                 export_pca(data, features, tomo_name[:-4], result_dir / sample)

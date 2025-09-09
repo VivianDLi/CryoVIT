@@ -12,7 +12,6 @@ defaults:
   - callbacks:
     - rich_progress_bar
   - datamodule: file
-  - base_experiment_config
   - _self_
   - override hydra/hydra_logging: rich_logger
   - override hydra/job_logging: rich_logger

@@ -5,6 +5,7 @@ from typing import Any
 import numpy as np
 import torch
 import torch.nn.functional as F
+from numpy.typing import NDArray
 from torch.utils.data import Dataset
 from torchvision.transforms import Normalize
 
@@ -12,7 +13,7 @@ from cryovit.datasets.vit_dataset import (
     IMAGENET_DEFAULT_MEAN,
     IMAGENET_DEFAULT_STD,
 )
-from cryovit.types import FileData, IntTomogramData, TomogramData
+from cryovit.types import FileData, TomogramData
 from cryovit.utils import load_data, load_labels
 
 
@@ -45,6 +46,7 @@ class FileDataset(Dataset):
         self.predict = predict
         self.for_dino = for_dino
         self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
+        self._printed_resize_warning = False
 
     def __len__(self) -> int:
         """Returns the total number of tomograms in the dataset."""
@@ -147,7 +149,7 @@ class FileDataset(Dataset):
 
         data["label"] = data["label"][di : di + x, hi : hi + y, wi : wi + z]
 
-    def _dino_transform(self, data: IntTomogramData) -> torch.Tensor:
+    def _dino_transform(self, data: NDArray[np.uint8]) -> torch.Tensor:
         """Applies normalization and resizing transformations to the tomogram.
 
         Args:
@@ -158,6 +160,15 @@ class FileDataset(Dataset):
         """
         scale = (14 / 16, 14 / 16)
         _, h, w = data.shape
+        # Resize height and width to be multiples of 16
+        H = int(np.ceil(h / 16) * 16)
+        W = int(np.ceil(w / 16) * 16)
+        if h != H or w != W:
+            if not self._printed_resize_warning:
+                print("Resizing tomogram from", (h, w), "to", (H, W))
+                self._printed_resize_warning = True
+            data = np.pad(data, ((0, 0), (0, H - h), (0, W - w)), mode="edge")
+            h, w = H, W
         assert (
             h % 16 == 0 and w % 16 == 0
         ), f"Invalid height: {h} or width: {w}"

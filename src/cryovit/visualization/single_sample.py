@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from cryovit.config import Sample
+from cryovit.types import Sample
 from cryovit.visualization.utils import (
     compute_stats,
     merge_experiments,

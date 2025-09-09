@@ -1,25 +1,58 @@
 """Defines custom types and dataclasses for model inputs and outputs."""
 
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
-from typing import Any, NewType
+from typing import Any
 
 import numpy as np
 import torch
 from numpy.typing import NDArray
 from tensordict import tensorclass
 
-#### Type Definitions ####
 
-# define dino features data type (C, H, W) float16
-DinoFeaturesData = NewType("DinoFeaturesData", NDArray[np.float16])
+#### Enum Definitions ####
+class Sample(Enum):
+    """Enum of all valid CryoET Samples."""
 
-# define tomogram data type (D, H, W) float32/uint8
-FloatTomogramData = NewType("FloatTomogramData", NDArray[np.float32])
-IntTomogramData = NewType("IntTomogramData", NDArray[np.uint8])
+    BACHD = "BACHD"
+    BACHD_Microtubules = "BACHD Microtubules"
+    dN17_BACHD = "dN17 BACHD"
+    Q109 = "Q109"
+    Q109_Microtubules = "Q109 Microtubules"
+    Q18 = "Q18"
+    Q18_Microtubules = "Q18 Microtubules"
+    Q20 = "Q20"
+    Q53 = "Q53"
+    Q53_KD = "Q53 PIAS1"
+    Q66 = "Q66"
+    Q66_GRFS1 = "Q66 GRFS1"
+    Q66_KD = "Q66 PIAS1"
+    WT = "Wild Type"
+    WT_Microtubules = "Wild Type Microtubules"
+    cancer = "Cancer"
+    AD = "AD"
+    AD_Abeta = "AD Abeta"
+    Aged = "Aged"
+    Young = "Young"
+    RGC_CM = "RGC CM"
+    RGC_control = "RGC Control"
+    RGC_naPP = "RGC naPP"
+    RGC_PP = "RGC PP"
+    CZI_Algae = "Algae"
+    CZI_Campy_C = "Campy C"
+    CZI_Campy_CDel = "Campy C-Deletion"
+    CZI_Campy_F = "Campy F"
 
-# define segmentation label data type (D, H, W) uint8
-LabelData = NewType("LabelData", NDArray[np.uint8])
+
+class ModelType(Enum):
+    """Enum of all valid model types."""
+
+    CRYOVIT = "cryovit"
+    UNET3D = "unet3d"
+    SAM2 = "sam2"
+    MEDSAM = "medsam"
+
 
 #### Class Definitions ####
 
@@ -166,9 +199,9 @@ class BatchedModelResult:
     samples: list[str]
     tomo_names: list[str]
     split_id: list[int] | None
-    data: list[FloatTomogramData]
-    label: list[LabelData]
-    preds: list[FloatTomogramData]
+    data: list[NDArray[np.float32]]
+    label: list[NDArray[np.uint8]]
+    preds: list[NDArray[np.float32]]
     losses: dict[str, float]
     metrics: dict[str, float]
     aux_data: dict[str, list[Any]] | None = None

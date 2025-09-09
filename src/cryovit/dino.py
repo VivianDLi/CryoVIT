@@ -6,27 +6,35 @@ from hydra import compose, initialize
 from hydra.utils import instantiate
 from rich.progress import track
 
-from cryovit.run.dino_features import _dino_features, _save_data, dino_model
+from cryovit.run.dino_features import (
+    DEFAULT_WINDOW_SIZE,
+    _dino_features,
+    _save_data,
+    dino_model,
+)
 from cryovit.types import FileData
 from cryovit.utils import load_files_from_path
 
 
 def run_dino(
-    train_data: list[Path], result_dir: Path, batch_size: int
+    train_data: list[Path],
+    result_dir: Path,
+    batch_size: int,
+    window_size: int | None = DEFAULT_WINDOW_SIZE,
 ) -> None:
     ## Setup hydra config
-    config_path = Path(__file__).parent / "configs"
     with initialize(
         version_base="1.2",
-        config_path=str(config_path),
+        config_path="configs",
         job_name="cryovit_features",
     ):
         cfg = compose(
             config_name="dino_features",
             overrides=[
-                f"batch_size={batch_size}, sample=null",
+                f"batch_size={batch_size}",
+                "sample=null",
                 "export_features=False",
-                "datamodule.dataset=file",
+                "datamodule/dataset=file",
             ],
         )
     cfg.paths.model_dir = Path(__file__).parent / "foundation_models"
@@ -41,9 +49,9 @@ def run_dino(
         len(train_data) > 0
     ), "No valid tomogram files found in the specified training data path."
     train_file_datas = [FileData(tomo_path=f) for f in train_data]
-    dataset = instantiate(cfg.datamodule.dataset)(
-        train_file_datas, input_key=None, label_key=None, for_dino=True
-    )
+    dataset = instantiate(
+        cfg.datamodule.dataset, input_key=None, label_key=None
+    )(train_file_datas, for_dino=True)
     dataloader = instantiate(cfg.datamodule.dataloader)(dataset=dataset)
 
     result_list = [result_dir / f"{f.stem}.hdf" for f in train_data]
@@ -55,7 +63,9 @@ def run_dino(
             description="[green]Computing DINO features for training data",
             total=len(dataloader),
         ):
-            features = _dino_features(x, model, cfg.batch_size)
+            features = _dino_features(
+                x, model, cfg.batch_size, window_size=window_size
+            )
 
             result_path = result_list[i].with_suffix(".hdf")
             result_path.parent.mkdir(parents=True, exist_ok=True)
@@ -64,7 +74,7 @@ def run_dino(
             _save_data(data, features, tomo_name, result_dir)
     except torch.OutOfMemoryError:
         print(
-            f"Ran out of GPU memory during DINO feature extraction. Try reducing the batch size. Current batch size is {cfg.batch_size}."
+            f"Ran out of GPU memory during DINO feature extraction. Try reducing the batch size or window size. Current batch size is {cfg.batch_size} and window size is {window_size}."
         )
         return
 
@@ -76,30 +86,41 @@ if __name__ == "__main__":
     parser.add_argument(
         "train_data",
         type=str,
-        required=True,
         help="Directory or .txt file of training tomograms",
     )
     parser.add_argument(
         "result_dir",
         type=str,
-        required=True,
         help="Directory to save the DINO features",
     )
     parser.add_argument(
         "--batch_size",
         type=int,
-        default=16,
-        help="Batch size for DINO feature extraction (default: 128)",
+        default=64,
+        required=False,
+        help="Batch size for DINO feature extraction (default: 64)",
+    )
+    parser.add_argument(
+        "--window_size",
+        type=int,
+        default=None,
+        required=False,
+        help="Window size for DINO feature extraction (default: 630)",
     )
 
     args = parser.parse_args()
     train_data = Path(args.train_data)
     result_dir = Path(args.result_dir)
     batch_size = args.batch_size
+    window_size = (
+        args.window_size
+        if args.window_size is not None
+        else DEFAULT_WINDOW_SIZE
+    )
 
     ## Sanity Checking
     assert train_data.exists(), "Training data path does not exist."
     result_dir.mkdir(parents=True, exist_ok=True)
 
     train_files = load_files_from_path(train_data)
-    run_dino(train_files, result_dir, batch_size)
+    run_dino(train_files, result_dir, batch_size, window_size=window_size)

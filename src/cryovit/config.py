@@ -3,46 +3,13 @@
 import logging
 import sys
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from hydra.core.config_store import ConfigStore
 from omegaconf import MISSING, OmegaConf
 
-
-class Sample(Enum):
-    """Enum of all valid CryoET Samples."""
-
-    BACHD = "BACHD"
-    BACHD_Microtubules = "BACHD Microtubules"
-    dN17_BACHD = "dN17 BACHD"
-    Q109 = "Q109"
-    Q109_Microtubules = "Q109 Microtubules"
-    Q18 = "Q18"
-    Q18_Microtubules = "Q18 Microtubules"
-    Q20 = "Q20"
-    Q53 = "Q53"
-    Q53_KD = "Q53 PIAS1"
-    Q66 = "Q66"
-    Q66_GRFS1 = "Q66 GRFS1"
-    Q66_KD = "Q66 PIAS1"
-    WT = "Wild Type"
-    WT_Microtubules = "Wild Type Microtubules"
-    cancer = "Cancer"
-    AD = "AD"
-    AD_Abeta = "AD Abeta"
-    Aged = "Aged"
-    Young = "Young"
-    RGC_CM = "RGC CM"
-    RGC_control = "RGC Control"
-    RGC_naPP = "RGC naPP"
-    RGC_PP = "RGC PP"
-    CZI_Algae = "Algae"
-    CZI_Campy_C = "Campy C"
-    CZI_Campy_CDel = "Campy C-Deletion"
-    CZI_Campy_F = "Campy F"
-
+from cryovit.types import Sample
 
 samples: list[str] = [sample.name for sample in Sample]
 hd_samples: list[str] = [
