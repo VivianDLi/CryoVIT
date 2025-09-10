@@ -1,5 +1,6 @@
 """Dataset class for loading tomograms for DINOv2 models."""
 
+import logging
 from pathlib import Path
 
 import h5py
@@ -9,6 +10,8 @@ import torch.nn.functional as F
 from numpy.typing import NDArray
 from torch.utils.data import Dataset
 from torchvision.transforms import Normalize
+
+from cryovit.config import DINO_PATCH_SIZE
 
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
@@ -77,14 +80,16 @@ class VITDataset(Dataset):
         Returns:
             torch.Tensor: The transformed data as a PyTorch tensor.
         """
-        scale = (14 / 16, 14 / 16)
+        scale = (DINO_PATCH_SIZE / 16, DINO_PATCH_SIZE / 16)
         _, h, w = data.shape
         # Resize height and width to be multiples of 16
         H = int(np.ceil(h / 16) * 16)
         W = int(np.ceil(w / 16) * 16)
         if h != H or w != W:
             if not self._printed_resize_warning:
-                print("Resizing tomogram from", (h, w), "to", (H, W))
+                logging.warning(
+                    "Resizing tomogram from %s to %s", (h, w), (H, W)
+                )
                 self._printed_resize_warning = True
             data = np.pad(data, ((0, 0), (0, H - h), (0, W - w)), mode="edge")
             h, w = H, W

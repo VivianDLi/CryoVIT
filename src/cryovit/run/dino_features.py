@@ -1,5 +1,6 @@
 """Script for extracting DINOv2 features from tomograms."""
 
+import logging
 from pathlib import Path
 
 import h5py
@@ -8,16 +9,19 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from hydra import compose, initialize
 from hydra.utils import instantiate
 from numpy.typing import NDArray
 from rich.progress import track
 
 from cryovit.config import (
+    DINO_PATCH_SIZE,
     BaseDataModule,
     DinoFeaturesConfig,
     samples,
     tomogram_exts,
 )
+from cryovit.types import FileData
 from cryovit.visualization.dino_pca import export_pca
 
 torch.set_float32_matmul_precision("high")  # ensures tensor cores are used
@@ -30,13 +34,13 @@ DEFAULT_WINDOW_SIZE = 630  # 720 // 16 * 14
 
 
 def _folded_to_patch(
-    x: torch.Tensor, C: int, window_size: int
+    x: torch.Tensor, C: int, window_size: tuple[int, int]
 ) -> tuple[torch.Tensor, int, int]:
     """Convert unfolded tensor to patch features tensor shape."""
     B, _, L = x.shape  # B, C * window_size * window_size, L
     x = x.permute(0, 2, 1).contiguous()  # B, L, C * window_size * window_size
     x = x.reshape(
-        -1, C, window_size, window_size
+        -1, C, window_size[0], window_size[1]
     )  # B * L, C, window_size, window_size
     return x, B, L
 
@@ -58,7 +62,7 @@ def _dino_features(
     data: torch.Tensor,
     model: torch.nn.Module,
     batch_size: int,
-    window_size: int | None = DEFAULT_WINDOW_SIZE,
+    window_size: tuple[int, int] | int | None = DEFAULT_WINDOW_SIZE,
 ) -> NDArray[np.float16]:
     """Extract patch features from a tomogram using a DINOv2 model. Uses windows to fit everything in memory.
 
@@ -71,52 +75,80 @@ def _dino_features(
         NDArray[np.float16]: A numpy array containing the extracted features in reduced precision.
     """
     if window_size is None:
-        window_size = DEFAULT_WINDOW_SIZE
-    C, H, W = data.shape[-2:]
-    pw, ph = W // 14, H // 14  # the number of patches extracted per slice
-    window_size = min(window_size, min(W, H))
-    dilation = min(
-        (W - 1) // window_size, min((H - 1) // window_size, 1)
+        window_size = (DEFAULT_WINDOW_SIZE, DEFAULT_WINDOW_SIZE)
+    elif isinstance(window_size, int):
+        window_size = (window_size, window_size)
+    C, H, W = data.shape[1:]
+    ph, pw = (
+        H // DINO_PATCH_SIZE,
+        W // DINO_PATCH_SIZE,
+    )  # the number of patches extracted per slice
+    window_size = (min(window_size[0], H), min(window_size[1], W))
+    dilation = (
+        max((W - 1) // window_size[1], 1),
+        max((H - 1) // window_size[0], 1),
     )  # at least 1 and not equal to image size
-    fold_params = {
-        "kernel_size": window_size,
-        "stride": 1,
-        "dilation": dilation,
-        "padding": 0,
-    }
-    fold = nn.Fold(output_size=(pw, ph), **fold_params)
-    unfold = nn.Unfold(**fold_params)
-    divisor = torch.zeros(
-        1, 1, H, W
-    ).cuda()  # for averaging overlapping patches
+    stride = tuple(
+        (((d * ws) // 4) // DINO_PATCH_SIZE) * DINO_PATCH_SIZE
+        for d, ws in zip(dilation, window_size, strict=True)
+    )  # 75% overlap, multiple of 14
+    fold = nn.Fold(
+        output_size=(ph, pw),
+        kernel_size=tuple(ws // DINO_PATCH_SIZE for ws in window_size),
+        stride=tuple(s // DINO_PATCH_SIZE for s in stride),
+        dilation=dilation,
+    )
+    unfold = nn.Unfold(
+        kernel_size=window_size,
+        stride=stride,
+        dilation=dilation,
+    )
+    # divisor tensor for averaging overlapping patches
+    divisor = torch.ones(1, 1, H, W).cuda()
     divisor = unfold(divisor)
     divisor, B, L = _folded_to_patch(divisor, 1, window_size)
-    divisor = F.max_pool2d(divisor, 14, stride=14)  # simulate patch extraction
+    divisor = F.max_pool2d(
+        divisor, DINO_PATCH_SIZE, stride=DINO_PATCH_SIZE
+    )  # simulate patch extraction
+    divisor = divisor.flatten(2).transpose(1, 2)  # B, L, 1
     divisor = _patch_to_folded(divisor, B, L)
     divisor = fold(divisor)
 
+    # Fold data into overlapping windows
+    data = unfold(data)  # B, C * window_size * window_size, L
+    data, B, L = _folded_to_patch(
+        data, C, window_size
+    )  # B * L, C, window_size, window_size
+    # Calculate features in batches
     all_features = []
     for i in range(0, len(data), batch_size):
         # Check for overflows
         if i + batch_size > len(data):
             batch_size = len(data) - i
-        vec = data[i : i + batch_size].cuda()
-        # Divide into overlapping window patches
-        patch_vec = unfold(vec)  # B, C * window_size * window_size, L
-        patch_vec, B, L = _folded_to_patch(patch_vec, C, window_size)
+        logging.info(
+            "Processing batch %d/%d: %d -> %d",
+            (i // batch_size + 1),
+            (len(data) // batch_size),
+            i,
+            (i + batch_size),
+        )
+        vec = data[i : i + batch_size].cuda().float()
+        # Convert to RGB by repeating channels
+        if vec.shape[1] == 1:
+            vec = vec.repeat(1, 3, 1, 1)
         # Extract features for each patch
-        patch_features = model.forward_features(patch_vec)[  # type: ignore
+        patch_features = model.forward_features(vec)[  # type: ignore
             "x_norm_patchtokens"
-        ]  # B * L, window_size * window_size, C2
-        patch_features = _patch_to_folded(patch_features, B, L)
-        # Reconstruct the feature map from overlapping patches
-        features = fold(patch_features)  # B, C2, pw, ph
-        features = features / divisor  # average overlapping areas
-        features = features.reshape(features.shape[0], pw, ph, -1)
-        features = features.permute([3, 0, 1, 2]).contiguous()  # [C2, B, W, H]
-        features = features.cpu().half().numpy()
-        all_features.append(features)
-    return np.concatenate(all_features, axis=1)  # type: ignore
+        ]  # B', ph * pw, C2
+        patch_features: torch.Tensor = patch_features.half()
+        all_features.append(patch_features)
+    features = torch.cat(all_features, dim=0)  # B * L, ph * pw, C2
+    features = _patch_to_folded(features, B, L)  # B, C2 * ph * pw, L
+    features = fold(features)  # B, C2, ph, pw
+    features /= divisor  # average overlapping patches
+    features = features.permute([1, 0, 2, 3]).contiguous()  # C2, D, W, H
+    features = features.cpu().numpy()
+    return features
 
 
 def _save_data(
@@ -137,9 +169,10 @@ def _save_data(
     dst_dir.mkdir(parents=True, exist_ok=True)
 
     with h5py.File(dst_dir / tomo_name, "w") as fh:
-        fh.create_group("labels")
         for key in data:
             if key != "data":
+                if "labels" not in fh:
+                    fh.create_group("labels")
                 fh["labels"].create_dataset(key, data=data[key], shape=data[key].shape, dtype=data[key].dtype, compression="gzip")  # type: ignore
             else:
                 fh.create_dataset(

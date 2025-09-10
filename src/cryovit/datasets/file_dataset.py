@@ -1,5 +1,6 @@
 """Dataset class for loading DINOv2 features and labels for CryoVIT user models."""
 
+import logging
 from typing import Any
 
 import numpy as np
@@ -9,6 +10,7 @@ from numpy.typing import NDArray
 from torch.utils.data import Dataset
 from torchvision.transforms import Normalize
 
+from cryovit.config import DINO_PATCH_SIZE
 from cryovit.datasets.vit_dataset import (
     IMAGENET_DEFAULT_MEAN,
     IMAGENET_DEFAULT_STD,
@@ -46,6 +48,7 @@ class FileDataset(Dataset):
         self.predict = predict
         self.for_dino = for_dino
         self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
+        self._key_cache = {}
         self._printed_resize_warning = False
 
     def __len__(self) -> int:
@@ -69,11 +72,31 @@ class FileDataset(Dataset):
 
         file_data = self.files[idx]
         data = self._load_tomogram(file_data)
+        aux_data = {}
 
         if self.for_dino:
-            return self._dino_transform(data["input"])
+            dino_data = self._dino_transform(data["input"])
+            return TomogramData(
+                sample=file_data.sample,
+                tomo_name=file_data.tomo_path.name,
+                split_id=None,
+                data=dino_data,
+                label=torch.zeros(
+                    data["input"].shape, dtype=torch.bool
+                ),  # dummy label,
+                aux_data={"data": data["input"].squeeze(0)},
+            )  # type: ignore
         if self.train:
             self._random_crop(data)
+        elif not self.train or self.predict:  # i.e., eval
+            # Load the full tomogram as aux_data for visualization
+            aux_data = {
+                "data": (
+                    load_data(file_data.tomo_path, key="data")[0].squeeze(0)
+                    if self.input_key != "data"
+                    else data["input"].squeeze(0)
+                )
+            }
 
         return TomogramData(
             sample=file_data.sample,
@@ -81,7 +104,7 @@ class FileDataset(Dataset):
             split_id=None,
             data=data["input"],
             label=data["label"],
-            aux_data=None,
+            aux_data=aux_data,
         )  # type: ignore
 
     def _load_tomogram(self, file_data: FileData) -> dict[str, Any]:
@@ -96,17 +119,20 @@ class FileDataset(Dataset):
         tomo_path = file_data.tomo_path
         label_path = file_data.label_path
 
-        data = load_data(tomo_path, key=self.input_key)
+        # Cache the label key used for each tomogram to avoid redundant reads
+        if tomo_path in self._key_cache:
+            data, _ = load_data(tomo_path, key=self._key_cache[tomo_path])
+        else:
+            data, key = load_data(tomo_path, key=self.input_key)
+            self._key_cache[tomo_path] = key
         labels = (
-            load_labels(label_path, label_keys=file_data.labels)
+            load_labels(
+                label_path, label_keys=file_data.labels, key=self.label_key
+            )
             if label_path is not None and file_data.labels is not None
             else None
         )
         assert data is not None, f"Failed to load data from {tomo_path}"
-        if labels is not None:
-            assert (
-                self.label_key in labels
-            ), f"Label key {self.label_key} not found in labels from {label_path}"
 
         data_dict = {
             "input": data,
@@ -158,26 +184,37 @@ class FileDataset(Dataset):
         Returns:
             torch.Tensor: The transformed data as a PyTorch tensor.
         """
-        scale = (14 / 16, 14 / 16)
-        _, h, w = data.shape
+        scale = (DINO_PATCH_SIZE / 16, DINO_PATCH_SIZE / 16)
+        h, w = data.shape[-2:]
         # Resize height and width to be multiples of 16
         H = int(np.ceil(h / 16) * 16)
         W = int(np.ceil(w / 16) * 16)
         if h != H or w != W:
             if not self._printed_resize_warning:
-                print("Resizing tomogram from", (h, w), "to", (H, W))
+                logging.warning(
+                    "Resizing tomogram from %s to %s", (h, w), (H, W)
+                )
                 self._printed_resize_warning = True
-            data = np.pad(data, ((0, 0), (0, H - h), (0, W - w)), mode="edge")
+            data = np.pad(
+                data, ((0, 0), (0, 0), (0, H - h), (0, W - w)), mode="edge"
+            )
             h, w = H, W
         assert (
             h % 16 == 0 and w % 16 == 0
         ), f"Invalid height: {h} or width: {w}"
 
-        np_data = np.expand_dims(data, axis=1)  # D, C, H, W (i.e., B, C, H, W)
-        np_data = np.repeat(np_data, 3, axis=1)
+        np_data = data.transpose((1, 0, 2, 3))  # D, C, H, W
+        np_data = np.repeat(np_data, 3, axis=1)  # C, D, H, W
 
         torch_data = torch.from_numpy(
             np_data
-        ).float()  # data expected to be uint8, [0-255]
-        torch_data = self.transform(torch_data / 255.0)
-        return F.interpolate(torch_data, scale_factor=scale, mode="bicubic")
+        ).float()  # data expected to be float32, [0-1]
+        torch_data: torch.Tensor = self.transform(torch_data)[
+            :, [0], :, :
+        ]  # D, C, H, W
+        torch_data: torch.Tensor = F.interpolate(
+            torch_data, scale_factor=scale, mode="bicubic"
+        )
+        return torch_data.to(
+            torch.float16
+        )  # Use half precision to save memory
