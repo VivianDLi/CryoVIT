@@ -139,14 +139,10 @@ class CsvWriter(Callback):
             outputs.tomo_names[0],
             outputs.split_id[0] if outputs.split_id is not None else None,
         )
-        metric_names = list(outputs.metrics)
 
         # Create results .csv if it doesn't exist
-        column_names = ["sample", "tomo_name"] + metric_names
-        if split_id is not None:
-            column_names += ["split_id"]
         if not self.csv_result_path.exists():
-            results_df = pd.DataFrame(columns=column_names)
+            results_df = pd.DataFrame()
         else:
             results_df = pd.read_csv(self.csv_result_path)
 
@@ -171,5 +167,8 @@ class CsvWriter(Callback):
         metrics_df = self._create_metric_df(
             sample, tomo_name, split_id, **outputs.metrics
         )
-        results_df = pd.concat([results_df, metrics_df], ignore_index=True)
+        if results_df.empty:
+            results_df = metrics_df
+        else:
+            results_df = pd.concat([results_df, metrics_df], ignore_index=True)
         results_df.to_csv(self.csv_result_path, mode="w", index=False)

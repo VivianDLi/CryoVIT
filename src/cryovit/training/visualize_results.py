@@ -1,6 +1,7 @@
 import argparse
 from pathlib import Path
 
+from cryovit._logging_config import setup_logging
 from cryovit.visualization import (
     process_experiment,
     process_fractional_experiment,
@@ -9,11 +10,14 @@ from cryovit.visualization import (
     process_single_experiment,
 )
 
+setup_logging("DEBUG")
+import logging  # noqa: E402
+
 model_names = {
     "cryovit": "CryoViT",
     "unet3d": "3D U-Net",
-    # "sam2": "SAM2",
-    # "medsam": "MedSAM"
+    "sam2": "SAM2",
+    "medsam": "MedSAM",
 }
 
 experiment_names = {
@@ -189,7 +193,7 @@ if __name__ == "__main__":
                     args.exp_type, "hd", names, exp_dir, result_dir
                 )
             else:
-                print(f"Unknown sample type: {sample_type}")
+                logging.warning("Unknown sample type: %s", sample_type)
                 continue
     else:
         for group, names in exp_names.items():

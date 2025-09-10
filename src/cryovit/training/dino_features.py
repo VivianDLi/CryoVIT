@@ -1,13 +1,16 @@
 """Script to extract DINOv2 features from tomograms."""
 
-import logging
 import traceback
 import warnings
 
 import hydra
 
+from cryovit._logging_config import setup_logging
 from cryovit.config import DinoFeaturesConfig, validate_dino_config
 from cryovit.run import dino_features
+
+setup_logging("DEBUG")
+import logging  # noqa: E402
 
 warnings.simplefilter("ignore")
 
@@ -32,7 +35,7 @@ def main(cfg: DinoFeaturesConfig) -> None:
     validate_dino_config(cfg)
 
     try:
-        dino_features.run_dino(cfg)
+        dino_features.run_trainer(cfg)
     except BaseException as err:  # noqa: BLE001
         logging.error("%s: %s", type(err).__name__, err)
         logging.error(traceback.format_exc())

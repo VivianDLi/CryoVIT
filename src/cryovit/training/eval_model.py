@@ -1,13 +1,16 @@
 """Script to evaluate segmentation models for CryoET data."""
 
-import logging
 import traceback
 import warnings
 
 import hydra
 
+from cryovit._logging_config import setup_logging
 from cryovit.config import BaseExperimentConfig, validate_experiment_config
 from cryovit.run import eval_model
+
+setup_logging("DEBUG")
+import logging  # noqa: E402
 
 warnings.simplefilter("ignore")
 

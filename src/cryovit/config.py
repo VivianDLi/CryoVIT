@@ -27,6 +27,8 @@ hd_samples: list[str] = [
 ]
 tomogram_exts: list[str] = [".hdf", ".mrc"]
 
+DINO_PATCH_SIZE = 14
+
 
 @dataclass
 class BaseModel:

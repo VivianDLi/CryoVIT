@@ -1,5 +1,6 @@
 """Extract visualizations of DINO features with PCA."""
 
+import logging
 from pathlib import Path
 
 import h5py
@@ -44,7 +45,7 @@ def _process_file(
             rgb_seg = rgb_seg * color  # colorize
             combined_rgb_seg += rgb_seg
         else:
-            print(f"Couldn't find color for label {label}")
+            logging.warning("Couldn't find color for label %s", label)
     combined_rgb_seg = np.clip(combined_rgb_seg, 0, 1)
     label_data["data"] = np.clip(label_data["data"], 0, 1)
     final_data = np.stack(
@@ -76,7 +77,7 @@ def _process_file(
     for img_frame in frames:
         video_writer.write(img_frame)
     video_writer.release()
-    print("Saved video to", video_path)
+    logging.info("Saved video to %s", video_path)
 
 
 def _process_files(
@@ -84,7 +85,7 @@ def _process_files(
 ) -> None:
     result_dir.mkdir(parents=True, exist_ok=True)
     for f_name, labels in file_dict.items():
-        print(f"Processing file {f_name}")
+        logging.info("Processing file %s", f_name)
         _process_file(f_name, labels, result_dir)
 
 
@@ -128,8 +129,11 @@ def process_experiment(
     for label, exp_name in zip(labels, exp_names, strict=True):
         file_dir = exp_dir / exp_name
         tomo_files = list(file_dir.glob("**/*.hdf"))
-        print(
-            f"Found {len(tomo_files)} .hdf files for label {label} in experiment directory {exp_name}"
+        logging.info(
+            "Found %d .hdf files for label %s in experiment directory %s",
+            len(tomo_files),
+            label,
+            exp_name,
         )
         files[label] = tomo_files
     all_files = {}

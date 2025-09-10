@@ -5,16 +5,112 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import torch
+from hydra import compose, initialize
 from hydra.core.hydra_config import HydraConfig
 from hydra.utils import instantiate
 from pytorch_lightning import Trainer, seed_everything
+from pytorch_lightning.loggers import TensorBoardLogger
 
 from cryovit.config import BaseExperimentConfig
 from cryovit.models import create_sam_model_from_weights
+from cryovit.types import ModelType
+from cryovit.utils import save_model
 
 torch.set_float32_matmul_precision("high")
-logging.getLogger("torch._dynamo").setLevel(logging.WARNING)
-logging.getLogger("torch._inductor").setLevel(logging.WARNING)
+
+## For Scripts
+
+
+def run_training(
+    train_data: list[Path],
+    train_labels: list[Path],
+    labels: list[str],
+    model_type: ModelType,
+    model_name: str,
+    label_key: str,
+    result_dir: Path,
+    val_data: list[Path] | None = None,
+    val_labels: list[Path] | None = None,
+    num_epochs: int = 50,
+    log_training: bool = False,
+) -> Path:
+    ## Setup hydra config
+    with initialize(
+        version_base="1.2",
+        config_path="../configs",
+        job_name="cryovit_train",
+    ):
+        cfg = compose(
+            config_name="train_model",
+            overrides=[
+                f"name={model_name}",
+                f"label_key={label_key}",
+                f"model={model_type}",
+                "datamodule=file",
+                f"trainer.max_epochs={num_epochs}",
+            ],
+        )
+    cfg.paths.model_dir = Path(__file__).parent.parent / "foundation_models"
+    save_model_path = result_dir / f"{model_name}.model"
+
+    # Check input key
+    if cfg.model.input_key != "dino_features":
+        cfg.model.input_key = None  # find available data instead
+
+    ## Setup dataset
+    dataset_fn = instantiate(cfg.datamodule.dataset)
+    dataloader_fn = instantiate(cfg.datamodule.dataloader)
+    datamodule = instantiate(cfg.datamodule, _convert_="all")(
+        data_paths=train_data,
+        data_labels=train_labels,
+        labels=labels,
+        val_paths=val_data,
+        val_labels=val_labels,
+        dataloader_fn=dataloader_fn,
+        dataset_fn=dataset_fn,
+    )
+    logging.info("Setup dataset.")
+
+    ## Setup training
+    callbacks = [instantiate(cb_cfg) for cb_cfg in cfg.callbacks.values()]
+    loggers = []
+    if log_training:
+        # tensorboard logger to avoid wandb account issues
+        loggers.append(TensorBoardLogger(save_dir=result_dir, name=model_name))
+    trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=loggers)
+    if cfg.model._target_ == "cryovit.models.SAM2":
+        # Load SAM2 pre-trained models
+        model = create_sam_model_from_weights(
+            cfg.model, cfg.paths.model_dir / cfg.paths.sam_name
+        )
+    else:
+        model = instantiate(cfg.model)
+    logging.info("Loaded model.")
+
+    # Base SAM2 only supports image encoder compilation
+    if cfg.model._target_ == "cryovit.models.SAM2":
+        logging.info("Compiling image encoder for SAM2 model.")
+        try:
+            model.compile()
+        except Exception as e:  # noqa: BLE001
+            logging.error("Unable to compile image encoder for SAM2: %s", e)
+    else:
+        logging.info("Compiling model forward pass.")
+        try:
+            model.forward = torch.compile(model.forward)
+        except Exception as e:  # noqa: BLE001
+            logging.error("Unable to compile forward pass: %s", e)
+
+    logging.info("Starting training.")
+    trainer.fit(model, datamodule=datamodule)
+
+    # Save model
+    logging.info("Saving model.")
+    save_model(model_name, label_key, model, cfg.model, save_model_path)
+    return save_model_path
+
+
+## For Experiments
 
 
 def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
@@ -39,9 +135,9 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     cfg.paths.exp_dir = new_exp_dir
 
     # Setup WandB Logger
-    for name, logger in cfg.logger.items():
+    for name, lg in cfg.logger.items():
         if name == "wandb":
-            logger.name = (
+            lg.name = (
                 f"{sample}_{cfg.datamodule.split_id}"
                 if cfg.datamodule.split_id is not None
                 else sample
@@ -80,9 +176,9 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
 
     # Setup training
     callbacks = [instantiate(cb_cfg) for cb_cfg in cfg.callbacks.values()]
-    logger = [instantiate(lg_cfg) for lg_cfg in cfg.logger.values()]
+    loggers = [instantiate(lg_cfg) for lg_cfg in cfg.logger.values()]
     trainer: Trainer = instantiate(
-        cfg.trainer, callbacks=callbacks, logger=logger
+        cfg.trainer, callbacks=callbacks, logger=loggers
     )
     logging.info("Setup trainer.")
     if cfg.model._target_ == "cryovit.models.SAM2":
@@ -95,7 +191,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     logging.info("Setup model.")
 
     # Log hyperparameters
-    if trainer.logger:
+    if trainer.loggers:
         hparams = {
             "datamodule_type": HydraConfig.get().runtime.choices["datamodule"],
             "model_name": cfg.model.name,
@@ -128,8 +224,8 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
                 if cfg.model.custom_kwargs
                 else None
             )
-        for logger in trainer.loggers:
-            logger.log_hyperparams(hparams)
+        for lg in trainer.loggers:
+            lg.log_hyperparams(hparams)
 
     # Base SAM2 only supports image encoder compilation
     if cfg.model._target_ == "cryovit.models.SAM2":

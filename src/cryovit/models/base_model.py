@@ -70,7 +70,7 @@ class BaseModel(LightningModule, ABC):
     def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
         """Logs gradient norms just before the optimizer updates weights."""
         norms = grad_norm(self, norm_type=2)
-        self.log_dict(norms, logger=True, on_step=True)
+        self.log_dict(norms, on_step=True)
 
     def _masked_predict(
         self, batch: BatchedTomogramData  # type: ignore
@@ -106,7 +106,6 @@ class BaseModel(LightningModule, ABC):
         self.log_dict(
             loss_log_dict,
             prog_bar=True,
-            logger=True,
             on_epoch=not on_step,
             on_step=on_step,
             batch_size=batch_size,
@@ -119,7 +118,6 @@ class BaseModel(LightningModule, ABC):
         self.log_dict(
             metric_log_dict,
             prog_bar=True,
-            logger=True,
             on_epoch=True,
             on_step=False,
             batch_size=batch_size,

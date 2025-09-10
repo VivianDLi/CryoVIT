@@ -1,99 +1,13 @@
 import argparse
 from pathlib import Path
 
-import h5py
-import numpy as np
-import torch
-from hydra import compose, initialize
-from hydra.utils import instantiate
-from rich.progress import track
-
-from cryovit.utils import load_files_from_path, load_model
-
-
-@torch.inference_mode()
-def predict_model(data: np.ndarray, model: torch.nn.Module) -> np.ndarray:
-    torch_data = torch.from_numpy(data)
-    torch_data = torch_data.cuda()
-    preds = model(torch_data)
-    return preds.cpu().numpy()
-
-
-def run_inference(
-    data_files: list[Path], model_path: Path, result_dir: Path
-) -> list[Path]:
-    # Get model information
-    model, model_type, model_name, label_key = load_model(model_path)
-    assert model is not None, "Loaded model is None."
-    ## Setup hydra config
-    with initialize(
-        version_base="1.2",
-        config_path="configs",
-        job_name="infer_model",
-    ):
-        cfg = compose(
-            config_name="eval_model",
-            overrides=[
-                f"name={model_name}",
-                f"label_key={label_key}",
-                f"model={model_type}",
-                "datamodule=file",
-            ],
-        )
-    cfg.paths.model_dir = Path(__file__).parent / "foundation_models"
-    cfg.paths.results_dir = result_dir
-
-    # Check input key
-    if cfg.model.input_key != "dino_features":
-        cfg.model.input_key = None  # find available data instead
-
-    ## Setup dataset
-    dataset_fn = instantiate(cfg.datamodule.dataset)
-    dataloader_fn = instantiate(cfg.datamodule.dataloader)
-    datamodule = instantiate(cfg.datamodule, _convert_="all")(
-        data_paths=data_files,
-        val_paths=None,
-        dataloader_fn=dataloader_fn,
-        dataset_fn=dataset_fn,
-    )
-    dataloader = datamodule.predict_dataloader()
-    print("Setup dataset.")
-
-    result_paths = []
-    for x in track(
-        dataloader,
-        description=f"[green]Predicting {label_key} with {model_name}",
-        total=len(dataloader),
-    ):
-        preds = predict_model(x, model)
-        datas = x.tomo_batch.cpu().numpy()
-        tomo_names = x.metadata.identifiers[1]
-
-        # Save or process preds as needed
-        for name, data, pred in zip(tomo_names, datas, preds, strict=True):
-            result_path = (result_dir / name).withsuffix(".hdf")
-            result_path.parent.mkdir(parents=True, exist_ok=True)
-            # Save data and pred to HDF5 or other format
-            with h5py.File(result_path, "w") as fh:
-                fh.create_dataset(
-                    "data",
-                    data=data,
-                    shape=data.shape,
-                    dtype=data.dtype,
-                    compression="gzip",
-                )
-                fh.create_dataset(
-                    "predictions",
-                    data=pred,
-                    shape=pred.shape,
-                    dtype=pred.dtype,
-                    compression="gzip",
-                )
-            result_paths.append(result_path)
-    return result_paths
-
+from cryovit._logging_config import setup_logging
+from cryovit.run.infer_model import run_inference
+from cryovit.utils import load_files_from_path
 
 if __name__ == "__main__":
+    setup_logging("INFO")
+
     parser = argparse.ArgumentParser(
         description="Run model inference given a data folder (or text file specifying files)."
     )

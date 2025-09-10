@@ -1,85 +1,13 @@
 import argparse
 from pathlib import Path
 
-import torch
-from hydra import compose, initialize
-from hydra.utils import instantiate
-from rich.progress import track
-
-from cryovit.run.dino_features import (
-    DEFAULT_WINDOW_SIZE,
-    _dino_features,
-    _save_data,
-    dino_model,
-)
-from cryovit.types import FileData
+from cryovit._logging_config import setup_logging
+from cryovit.run.dino_features import DEFAULT_WINDOW_SIZE, run_dino
 from cryovit.utils import load_files_from_path
 
-
-def run_dino(
-    train_data: list[Path],
-    result_dir: Path,
-    batch_size: int,
-    window_size: int | None = DEFAULT_WINDOW_SIZE,
-) -> None:
-    ## Setup hydra config
-    with initialize(
-        version_base="1.2",
-        config_path="configs",
-        job_name="cryovit_features",
-    ):
-        cfg = compose(
-            config_name="dino_features",
-            overrides=[
-                f"batch_size={batch_size}",
-                "sample=null",
-                "export_features=False",
-                "datamodule/dataset=file",
-            ],
-        )
-    cfg.paths.model_dir = Path(__file__).parent / "foundation_models"
-
-    ## Load DINOv2 model
-    torch.hub.set_dir(cfg.dino_dir)
-    model = torch.hub.load(*dino_model, verbose=False).cuda()  # type: ignore
-    model.eval()
-
-    ## Setup dataset
-    assert (
-        len(train_data) > 0
-    ), "No valid tomogram files found in the specified training data path."
-    train_file_datas = [FileData(tomo_path=f) for f in train_data]
-    dataset = instantiate(
-        cfg.datamodule.dataset, input_key=None, label_key=None
-    )(train_file_datas, for_dino=True)
-    dataloader = instantiate(cfg.datamodule.dataloader)(dataset=dataset)
-
-    result_list = [result_dir / f"{f.stem}.hdf" for f in train_data]
-
-    ## Iterate through dataloader and extract features
-    try:
-        for i, x in track(
-            enumerate(dataloader),
-            description="[green]Computing DINO features for training data",
-            total=len(dataloader),
-        ):
-            features = _dino_features(
-                x, model, cfg.batch_size, window_size=window_size
-            )
-
-            result_path = result_list[i].with_suffix(".hdf")
-            result_path.parent.mkdir(parents=True, exist_ok=True)
-            result_dir, tomo_name = result_path.parent, result_path.name
-            data = {"data": x.cpu().numpy()}
-            _save_data(data, features, tomo_name, result_dir)
-    except torch.OutOfMemoryError:
-        print(
-            f"Ran out of GPU memory during DINO feature extraction. Try reducing the batch size or window size. Current batch size is {cfg.batch_size} and window size is {window_size}."
-        )
-        return
-
-
 if __name__ == "__main__":
+    setup_logging("INFO")
+
     parser = argparse.ArgumentParser(
         description="Calculate DINOv2 features for a given training dataset folder (or text file specifying files)."
     )
@@ -107,6 +35,12 @@ if __name__ == "__main__":
         required=False,
         help="Window size for DINO feature extraction (default: 630)",
     )
+    parser.add_argument(
+        "--visualize",
+        "-v",
+        action="store_true",
+        help="Whether to save PCA visualization of DINO features",
+    )
 
     args = parser.parse_args()
     train_data = Path(args.train_data)
@@ -123,4 +57,10 @@ if __name__ == "__main__":
     result_dir.mkdir(parents=True, exist_ok=True)
 
     train_files = load_files_from_path(train_data)
-    run_dino(train_files, result_dir, batch_size, window_size=window_size)
+    run_dino(
+        train_files,
+        result_dir,
+        batch_size,
+        window_size=window_size,
+        visualize=args.visualize,
+    )

@@ -1,5 +1,6 @@
 """Extract visualizations of DINO features with PCA."""
 
+import logging
 from pathlib import Path
 
 import h5py
@@ -64,6 +65,7 @@ def export_pca(
     features: NDArray[np.float16],
     tomo_name: str,
     result_dir: Path,
+    frame_id: int | None = None,
 ) -> None:
     """Extract PCA colormap from features and save to a specified directory."""
     from PIL import Image
@@ -72,7 +74,11 @@ def export_pca(
     image_dir = result_dir / tomo_name
     image_dir.mkdir(parents=True, exist_ok=True)
 
-    for idx in np.arange(stop=data.shape[0], step=10):  # type: ignore
+    if frame_id is None:
+        idxs = list(np.arange(0, data.shape[0], step=10, dtype=int))
+    else:
+        idxs = [frame_id]
+    for idx in idxs:  # type: ignore
         img_path = image_dir / f"{idx}.png"
 
         # Calculate PCA and color separately per slice
@@ -80,22 +86,23 @@ def export_pca(
         np_features = _calculate_pca(np_features)
         np_features = _color_features(np_features)
 
-        f_img = Image.fromarray(np_features[idx][::-1])
-        d_img = Image.fromarray(data[idx][::-1])
+        int_data = (data * 255.0).astype(np.uint8)
+        f_img = Image.fromarray(np_features[0][::-1])
+        d_img = Image.fromarray(int_data[idx][::-1])
 
         img = Image.new(
             "RGB", (2 * f_img.size[0], f_img.size[1])
         )  # concat images
         img.paste(d_img)
         img.paste(f_img, box=(d_img.size[0], 0))
-        print("Saving PCA visualization to %s", img_path)
+        logging.debug("Saving PCA visualization to %s", img_path)
         img.save(img_path)
 
 
 def process_samples(exp_dir: Path, result_dir: Path):
     result_dir.mkdir(parents=True, exist_ok=True)
     samples = [s.name for s in exp_dir.iterdir() if s.is_dir()]
-    print(
+    logging.info(
         "Found %d samples in experiment directory %s: %s",
         len(samples),
         exp_dir,
@@ -113,6 +120,8 @@ def process_samples(exp_dir: Path, result_dir: Path):
             total=len(tomo_names),
         ):
             with h5py.File(tomo_dir / tomo_name) as fh:
-                data: NDArray[np.float32] = fh["data"][()].astype(np.float32)  # type: ignore
+                data: NDArray[np.float32] = fh["data"][()]  # type: ignore
+                if data.dtype == np.uint8:
+                    data = data.astype(np.float32) / 255.0
                 features: NDArray[np.float16] = fh["dino_features"][()].astype(np.float32)  # type: ignore
                 export_pca(data, features, tomo_name[:-4], result_dir / sample)

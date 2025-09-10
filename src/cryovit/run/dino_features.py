@@ -121,18 +121,19 @@ def _dino_features(
     )  # B * L, C, window_size, window_size
     # Calculate features in batches
     all_features = []
-    for i in range(0, len(data), batch_size):
+    num_batches = (len(data) + batch_size - 1) // batch_size
+    for i, batch_idx in enumerate(range(0, len(data), batch_size)):
         # Check for overflows
-        if i + batch_size > len(data):
-            batch_size = len(data) - i
-        logging.info(
+        if batch_idx + batch_size > len(data):
+            batch_size = len(data) - batch_idx
+        logging.debug(
             "Processing batch %d/%d: %d -> %d",
-            (i // batch_size + 1),
-            (len(data) // batch_size),
-            i,
-            (i + batch_size),
+            i + 1,
+            num_batches,
+            batch_idx,
+            (batch_idx + batch_size),
         )
-        vec = data[i : i + batch_size].cuda().float()
+        vec = data[batch_idx : batch_idx + batch_size].cuda().float()
         # Convert to RGB by repeating channels
         if vec.shape[1] == 1:
             vec = vec.repeat(1, 3, 1, 1)
@@ -235,7 +236,83 @@ def _process_sample(
             export_pca(data["data"], features.astype(np.float32), records[i][:-4], image_dir / sample)  # type: ignore
 
 
-def run_dino(cfg: DinoFeaturesConfig) -> None:
+## For Scripts
+
+
+def run_dino(
+    train_data: list[Path],
+    result_dir: Path,
+    batch_size: int,
+    window_size: int | None = DEFAULT_WINDOW_SIZE,
+    visualize: bool = False,
+) -> None:
+    ## Setup hydra config
+    with initialize(
+        version_base="1.2",
+        config_path="../configs",
+        job_name="cryovit_features",
+    ):
+        cfg = compose(
+            config_name="dino_features",
+            overrides=[
+                f"batch_size={batch_size}",
+                "sample=null",
+                "export_features=False",
+                "datamodule/dataset=file",
+            ],
+        )
+    cfg.paths.model_dir = Path(__file__).parent.parent / "foundation_models"
+
+    ## Load DINOv2 model
+    torch.hub.set_dir(cfg.dino_dir)
+    model = torch.hub.load(*dino_model, verbose=False).cuda()  # type: ignore
+    model.eval()
+
+    ## Setup dataset
+    assert (
+        len(train_data) > 0
+    ), "No valid tomogram files found in the specified training data path."
+    train_file_datas = [FileData(tomo_path=f) for f in train_data]
+    dataset = instantiate(
+        cfg.datamodule.dataset, input_key=None, label_key=None
+    )(train_file_datas, for_dino=True)
+    dataloader = instantiate(cfg.datamodule.dataloader)(dataset=dataset)
+
+    result_list = [result_dir / f"{f.stem}.hdf" for f in train_data]
+
+    ## Iterate through dataloader and extract features
+    try:
+        for i, x in track(
+            enumerate(dataloader),
+            description="[green]Computing DINO features for training data",
+            total=len(dataloader),
+        ):
+            features = _dino_features(
+                x.data, model, cfg.batch_size, window_size=window_size
+            )
+
+            result_path = result_list[i].with_suffix(".hdf")
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            result_dir, tomo_name = result_path.parent, result_path.name
+            _save_data(x.aux_data, features, tomo_name, result_dir)
+            if visualize:
+                export_pca(
+                    x.aux_data["data"],
+                    features,
+                    tomo_name[:-4],
+                    result_dir.parent / "dino_images" / tomo_name[:-4],
+                )
+    except torch.OutOfMemoryError:
+        print(
+            f"Ran out of GPU memory during DINO feature extraction. Try reducing the batch size or window size. Current batch size is {cfg.batch_size} and window size is {window_size}."
+        )
+        return
+
+
+## For Experiments
+
+
+def run_trainer(cfg: DinoFeaturesConfig) -> None:
     """Process all tomograms in a sample or samples by extracting and saving their DINOv2 features."""
     # Convert paths to Paths
     cfg.paths.model_dir = Path(cfg.paths.model_dir)

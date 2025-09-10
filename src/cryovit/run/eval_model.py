@@ -5,16 +5,84 @@ from collections.abc import Iterable
 from pathlib import Path
 
 import torch
+from hydra import compose, initialize
 from hydra.utils import instantiate
 from pytorch_lightning import Trainer, seed_everything
 
 from cryovit.config import BaseExperimentConfig
 from cryovit.models import create_sam_model_from_weights
+from cryovit.utils import load_model
 
 torch.set_float32_matmul_precision("high")
-logging.getLogger("torch._dynamo").setLevel(logging.WARNING)
-logging.getLogger("torch._inductor").setLevel(logging.WARNING)
-logging.getLogger("pytorch_lightning").setLevel(logging.WARNING)
+
+## For Scripts
+
+
+def run_evaluation(
+    test_data: list[Path],
+    test_labels: list[Path],
+    labels: list[str],
+    model_path: Path,
+    result_dir: Path,
+    visualize: bool = True,
+) -> Path:
+    ## Get model information
+    model, model_type, model_name, label_key = load_model(model_path)
+    ## Setup hydra config
+    with initialize(
+        version_base="1.2",
+        config_path="../configs",
+        job_name="cryovit_eval",
+    ):
+        cfg = compose(
+            config_name="eval_model",
+            overrides=[
+                f"name={model_name}",
+                f"label_key={label_key}",
+                f"model={model_type.value}",
+                "datamodule=file",
+            ],
+        )
+    cfg.paths.model_dir = Path(__file__).parent.parent / "foundation_models"
+    cfg.paths.results_dir = result_dir
+
+    # Check input key
+    if cfg.model.input_key != "dino_features":
+        cfg.model.input_key = None  # find available data instead
+
+    ## Setup dataset
+    dataset_fn = instantiate(cfg.datamodule.dataset)
+    dataloader_fn = instantiate(cfg.datamodule.dataloader)
+    datamodule = instantiate(cfg.datamodule, _convert_="all")(
+        data_paths=test_data,
+        data_labels=test_labels,
+        labels=labels,
+        val_path=None,
+        val_labels=None,
+        dataloader_fn=dataloader_fn,
+        dataset_fn=dataset_fn,
+    )
+    logging.info("Setup dataset.")
+
+    ## Setup training
+    callbacks = [instantiate(cb_cfg) for cb_cfg in cfg.callbacks.values()]
+    # Remove pred_writer if visualize is False
+    loggers = [
+        instantiate(lg_cfg)
+        for lg_name, lg_cfg in cfg.logger.items()
+        if (visualize or lg_name != "test_pred_writer")
+    ]
+    trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=loggers)
+
+    logging.info("Starting testing.")
+    trainer.test(model, datamodule=datamodule)
+
+    # Load and return metrics path
+    metrics_path = cfg.paths.results_dir / "results" / f"{model_name}.csv"
+    return metrics_path
+
+
+## For Experiments
 
 
 def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
@@ -73,9 +141,9 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
 
     # Setup evaluation
     callbacks = [instantiate(cb_cfg) for cb_cfg in cfg.callbacks.values()]
-    logger = [instantiate(lg_cfg) for lg_cfg in cfg.logger.values()]
+    loggers = [instantiate(lg_cfg) for lg_cfg in cfg.logger.values()]
     trainer: Trainer = instantiate(
-        cfg.trainer, callbacks=callbacks, logger=logger
+        cfg.trainer, callbacks=callbacks, logger=loggers
     )
     logging.info("Setup trainer.")
     if cfg.model._target_ == "cryovit.models.SAM2":

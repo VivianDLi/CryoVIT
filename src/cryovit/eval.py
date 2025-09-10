@@ -1,77 +1,13 @@
 import argparse
 from pathlib import Path
 
-from hydra import compose, initialize
-from hydra.utils import instantiate
-
-from cryovit.utils import load_files_from_path, load_model
-
-
-def run_evaluation(
-    test_data: list[Path],
-    test_labels: list[Path],
-    labels: list[str],
-    model_path: Path,
-    result_dir: Path,
-    visualize: bool = True,
-) -> Path:
-    ## Get model information
-    model, model_type, model_name, label_key = load_model(model_path)
-    ## Setup hydra config
-    with initialize(
-        version_base="1.2",
-        config_path="configs",
-        job_name="cryovit_eval",
-    ):
-        cfg = compose(
-            config_name="eval_model",
-            overrides=[
-                f"name={model_name}",
-                f"label_key={label_key}",
-                f"model={model_type}",
-                "datamodule=file",
-            ],
-        )
-    cfg.paths.model_dir = Path(__file__).parent / "foundation_models"
-    cfg.paths.results_dir = result_dir
-
-    # Check input key
-    if cfg.model.input_key != "dino_features":
-        cfg.model.input_key = None  # find available data instead
-
-    ## Setup dataset
-    dataset_fn = instantiate(cfg.datamodule.dataset)
-    dataloader_fn = instantiate(cfg.datamodule.dataloader)
-    datamodule = instantiate(cfg.datamodule, _convert_="all")(
-        data_paths=test_data,
-        data_labels=test_labels,
-        labels=labels,
-        val_path=None,
-        val_labels=None,
-        dataloader_fn=dataloader_fn,
-        dataset_fn=dataset_fn,
-    )
-    print("Setup dataset.")
-
-    ## Setup training
-    callbacks = [instantiate(cb_cfg) for cb_cfg in cfg.callbacks.values()]
-    # Remove pred_writer if visualize is False
-    logger = [
-        instantiate(lg_cfg)
-        for lg_name, lg_cfg in cfg.logger.items()
-        if (visualize or lg_name != "test_pred_writer")
-    ]
-    trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=logger)
-
-    print("Starting testing.")
-    trainer.test(model, datamodule=datamodule)
-
-    # Load and return metrics path
-    metrics_path = cfg.paths.results_dir / "results" / f"{model_name}.csv"
-    return metrics_path
-
+from cryovit._logging_config import setup_logging
+from cryovit.run.eval_model import run_evaluation
+from cryovit.utils import load_files_from_path
 
 if __name__ == "__main__":
+    setup_logging("INFO")
+
     parser = argparse.ArgumentParser(
         description="Run model evaluation given a test folder (or text file specifying files)."
     )
@@ -103,7 +39,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         required=False,
-        help="Path to the directory to save the evaluation results: a .csv file containing evaluation metrics. Defaults to the current directory.",
+        help="Path to the directory (result_dir / results) to save the evaluation results: a .csv file containing evaluation metrics. Defaults to the current directory.",
     )
     parser.add_argument(
         "--visualize",
