@@ -156,6 +156,7 @@ class SAM2(BaseModel):
 
     def forward(self, data: BatchedTomogramData) -> dict[str, Tensor]:  # type: ignore
         C, H, W = data.tomo_batch.shape[-3:]  # [H, W]
+        truncate_size = 0
         # Expand channels for expected RGB input
         if C == 1:
             data.tomo_batch = data.tomo_batch.expand(-1, -1, 3, -1, -1)
@@ -172,6 +173,7 @@ class SAM2(BaseModel):
             data.tomo_batch = data.tomo_batch[:, :MAX_SAM_DEPTH]
             data.tomo_sizes = torch.clamp(data.tomo_sizes, max=MAX_SAM_DEPTH)
             data.min_slices = min(data.min_slices, MAX_SAM_DEPTH)
+            truncate_size = data.num_slices - MAX_SAM_DEPTH
         if do_resize:
             # Resize the input tomogram batch to the target size
             data.tomo_batch = F.interpolate(
@@ -200,7 +202,7 @@ class SAM2(BaseModel):
 
         # Pad outputs if truncated
         if do_truncate:
-            pad_size = (0, 0, 0, 0, 0, data.num_slices - MAX_SAM_DEPTH)
+            pad_size = (0, 0, 0, 0, 0, truncate_size)
             for k in out:
                 out[k] = F.pad(out[k], pad_size, mode="constant", value=0)
         if do_resize:
