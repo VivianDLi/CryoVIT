@@ -6,6 +6,7 @@ import h5py
 import numpy as np
 import pandas as pd
 from pytorch_lightning import Callback, LightningModule, Trainer
+from pytorch_lightning.callbacks.prediction_writer import BasePredictionWriter
 from pytorch_lightning.utilities.types import STEP_OUTPUT
 
 from cryovit.types import BatchedModelResult
@@ -75,6 +76,54 @@ class TestPredictionWriter(Callback):
                     fh.create_group("aux_data")
                     for key in outputs.aux_data:
                         fh["aux_data"].create_dataset(key, data=outputs.aux_data[key], compression="gzip")  # type: ignore
+
+
+class PredictionWriter(BasePredictionWriter):
+    """Callback to write predictions to disk during model prediction."""
+
+    def __init__(
+        self, results_dir: Path, label_key: str, threshold: float, **kwargs
+    ) -> None:
+        """Creates a callback to save predictions on the test data.
+
+        Args:
+            results_dir (Path): directory in which the predictions should be saved.
+        """
+        super().__init__(write_interval="batch")
+        self.results_dir = (
+            results_dir if isinstance(results_dir, Path) else Path(results_dir)
+        )
+        self.label_key = label_key
+        self.threshold = threshold
+        self.result_paths = []
+
+    def write_on_batch_end(
+        self,
+        trainer: Trainer,
+        pl_module: LightningModule,
+        prediction: BatchedModelResult,
+        batch_indices,
+        batch: Any,
+        batch_idx: int,
+        dataloader_idx: int,
+    ) -> None:
+        for n in range(prediction.num_tomos):
+            result_path = self.results_dir / prediction.tomo_names[n]
+            result_path = result_path.with_suffix(".hdf")
+            result_path.parent.mkdir(parents=True, exist_ok=True)
+            # Binary classify predictions into segmentations and convert to correct formats
+            data = prediction.data[n].astype(np.float32)
+            preds = prediction.preds[n]
+            segs = (preds >= self.threshold).astype(
+                np.uint8
+            )  # Binary segmentation
+            # Save data and pred to HDF5
+            with h5py.File(result_path, "w") as fh:
+                fh.create_dataset("data", data=data, compression="gzip")
+                fh.create_dataset(
+                    f"{self.label_key}_preds", data=segs, compression="gzip"
+                )
+            self.result_paths.append(result_path)
 
 
 class CsvWriter(Callback):

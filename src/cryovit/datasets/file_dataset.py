@@ -88,7 +88,7 @@ class FileDataset(Dataset):
             )  # type: ignore
         if self.train:
             self._random_crop(data)
-        elif not self.train or self.predict:  # i.e., eval
+        elif not self.train:  # i.e., eval or predict
             # Load the full tomogram as aux_data for visualization
             aux_data = {
                 "data": (
@@ -139,7 +139,9 @@ class FileDataset(Dataset):
             "label": (
                 labels[self.label_key]
                 if labels is not None and self.label_key is not None
-                else None
+                else np.zeros(
+                    (1, *data.shape[1:]), dtype=np.int8
+                )  # replace channel
             ),
         }
         return data_dict

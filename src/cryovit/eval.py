@@ -53,6 +53,7 @@ if __name__ == "__main__":
     test_labels = Path(args.test_labels)
     model_path = Path(args.model_path)
     result_dir = Path(args.result_dir) if args.result_dir else Path.cwd()
+    result_dir.mkdir(parents=True, exist_ok=True)
 
     ## Sanity Checking
     assert test_data.exists(), "Test data path does not exist."
@@ -61,9 +62,6 @@ if __name__ == "__main__":
     assert (
         model_path.suffix == ".model"
     ), "Model path must point to a .model file."
-    assert (
-        result_dir.exists() and result_dir.is_dir()
-    ), "Result directory either does not exist or isn't a directory."
 
     test_paths = load_files_from_path(test_data)
     test_label_paths = load_files_from_path(test_labels)

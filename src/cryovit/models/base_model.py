@@ -5,7 +5,6 @@ from collections.abc import Callable
 from copy import deepcopy
 from typing import Literal
 
-import numpy as np
 import torch
 from pytorch_lightning import LightningModule
 from pytorch_lightning.utilities import grad_norm
@@ -205,20 +204,26 @@ class BaseModel(LightningModule, ABC):
         )
 
     def predict_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:  # type: ignore
-        result = self.test_step(batch, batch_idx)
+        assert (
+            batch.aux_data is not None and "data" in batch.aux_data
+        ), "Batch aux_data must contain 'data' key for prediction."
+        input_data = batch.aux_data["data"]
+        preds = self(batch)
+        labels = [t_labels.cpu().numpy() for t_labels in batch.labels]
+        samples, tomo_names = batch.metadata.identifiers
 
-        # Normalize to [0-255]
-        for n in range(result.num_tomos):
-            data = result.data[n]
-            pred = result.preds[n]
-            result.data[n] = (
-                255 * (data - data.min()) / (data.max() - data.min())
-            ).astype(np.uint8)
-            result.preds[n] = (
-                255 * (pred - pred.min()) / (pred.max() - pred.min())
-            ).astype(np.uint8)
-
-        return result
+        return BatchedModelResult(
+            num_tomos=batch.num_tomos,
+            samples=samples,
+            tomo_names=tomo_names,
+            split_id=None,
+            data=input_data,
+            label=labels,
+            preds=[t_preds.cpu().numpy() for t_preds in preds],
+            losses={},
+            metrics={},
+            aux_data=None,
+        )
 
     @abstractmethod
     def forward(self):

@@ -4,16 +4,14 @@ import logging
 from collections.abc import Iterable
 from pathlib import Path
 
-import h5py
-import numpy as np
 import torch
 from hydra import compose, initialize
 from hydra.utils import instantiate
 from pytorch_lightning import Trainer, seed_everything
-from rich.progress import track
 
 from cryovit.config import BaseExperimentConfig
 from cryovit.models import create_sam_model_from_weights
+from cryovit.models.callbacks import PredictionWriter
 from cryovit.utils import load_model
 
 torch.set_float32_matmul_precision("high")
@@ -21,16 +19,11 @@ torch.set_float32_matmul_precision("high")
 ## For Scripts
 
 
-@torch.inference_mode()
-def predict_model(data: np.ndarray, model: torch.nn.Module) -> np.ndarray:
-    torch_data = torch.from_numpy(data)
-    torch_data = torch_data.cuda()
-    preds = model(torch_data)
-    return preds.cpu().numpy()
-
-
 def run_inference(
-    data_files: list[Path], model_path: Path, result_dir: Path
+    data_files: list[Path],
+    model_path: Path,
+    result_dir: Path,
+    threshold: float = 0.5,
 ) -> list[Path]:
     # Get model information
     model, model_type, model_name, label_key = load_model(model_path)
@@ -46,7 +39,7 @@ def run_inference(
             overrides=[
                 f"name={model_name}",
                 f"label_key={label_key}",
-                f"model={model_type}",
+                f"model={model_type.value}",
                 "datamodule=file",
             ],
         )
@@ -66,40 +59,21 @@ def run_inference(
         dataloader_fn=dataloader_fn,
         dataset_fn=dataset_fn,
     )
-    dataloader = datamodule.predict_dataloader()
     logging.info("Setup dataset.")
 
-    result_paths = []
-    for x in track(
-        dataloader,
-        description=f"[green]Predicting {label_key} with {model_name}",
-        total=len(dataloader),
-    ):
-        preds = predict_model(x, model)
-        datas = x.tomo_batch.cpu().numpy()
-        tomo_names = x.metadata.identifiers[1]
+    ## Setup training
+    pred_writer = PredictionWriter(
+        results_dir=result_dir, label_key=label_key, threshold=threshold
+    )
+    callbacks = [instantiate(cb_cfg) for cb_cfg in cfg.callbacks.values()]
+    callbacks.append(pred_writer)
+    loggers = []
+    trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=loggers)
 
-        # Save or process preds as needed
-        for name, data, pred in zip(tomo_names, datas, preds, strict=True):
-            result_path = (result_dir / name).withsuffix(".hdf")
-            result_path.parent.mkdir(parents=True, exist_ok=True)
-            # Save data and pred to HDF5 or other format
-            with h5py.File(result_path, "w") as fh:
-                fh.create_dataset(
-                    "data",
-                    data=data,
-                    shape=data.shape,
-                    dtype=data.dtype,
-                    compression="gzip",
-                )
-                fh.create_dataset(
-                    "predictions",
-                    data=pred,
-                    shape=pred.shape,
-                    dtype=pred.dtype,
-                    compression="gzip",
-                )
-            result_paths.append(result_path)
+    logging.info("Starting prediction.")
+    trainer.predict(model, datamodule=datamodule)
+
+    result_paths = pred_writer.result_paths
     return result_paths
 
 

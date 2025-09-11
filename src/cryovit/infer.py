@@ -29,11 +29,19 @@ if __name__ == "__main__":
         required=False,
         help="Path to the directory to save the inference results. Defaults to the current directory.",
     )
+    parser.add_argument(
+        "--threshold",
+        type=float,
+        default=0.5,
+        required=False,
+        help="Threshold for binary segmentation (default: 0.5)",
+    )
 
     args = parser.parse_args()
     data = Path(args.data)
     model_path = Path(args.model_path)
     result_dir = Path(args.result_dir) if args.result_dir else Path.cwd()
+    result_dir.mkdir(parents=True, exist_ok=True)
 
     ## Sanity Checking
     assert data.exists(), "Data path does not exist."
@@ -41,10 +49,7 @@ if __name__ == "__main__":
     assert (
         model_path.suffix == ".model"
     ), "Model path must point to a .model file."
-    assert (
-        result_dir.exists() and result_dir.is_dir()
-    ), "Result directory either does not exist or isn't a directory."
 
     data_paths = load_files_from_path(data)
 
-    run_inference(data_paths, model_path, result_dir)
+    run_inference(data_paths, model_path, result_dir, threshold=args.threshold)
