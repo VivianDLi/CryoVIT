@@ -89,7 +89,7 @@ class PredictionWriter(BasePredictionWriter):
         Args:
             results_dir (Path): directory in which the predictions should be saved.
         """
-        super().__init__(write_interval="batch")
+        super().__init__(write_interval="batch", **kwargs)
         self.results_dir = (
             results_dir if isinstance(results_dir, Path) else Path(results_dir)
         )

@@ -35,7 +35,7 @@ def run_inference(
         job_name="infer_model",
     ):
         cfg = compose(
-            config_name="eval_model",
+            config_name="infer_model",
             overrides=[
                 f"name={model_name}",
                 f"label_key={label_key}",
