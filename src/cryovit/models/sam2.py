@@ -170,10 +170,10 @@ class SAM2(BaseModel):
                 data.num_slices,
                 MAX_SAM_DEPTH,
             )
+            truncate_size = data.num_slices - MAX_SAM_DEPTH
             data.tomo_batch = data.tomo_batch[:, :MAX_SAM_DEPTH]
             data.tomo_sizes = torch.clamp(data.tomo_sizes, max=MAX_SAM_DEPTH)
             data.min_slices = min(data.min_slices, MAX_SAM_DEPTH)
-            truncate_size = data.num_slices - MAX_SAM_DEPTH
         if do_resize:
             # Resize the input tomogram batch to the target size
             data.tomo_batch = F.interpolate(

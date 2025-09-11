@@ -175,17 +175,22 @@ def _match_label_keys_to_data(
 ) -> dict[str, np.ndarray]:
     """Match label keys to data based on unique values in the data, assuming background is 0."""
     labels = {}
-    if metadata.nunique == len(label_keys):
+    nunique = (
+        metadata.nunique if metadata.drange[0] >= 0 else metadata.nunique - 1
+    )  # ignore negative values for nunique count
+    if nunique == len(label_keys):
         label_values = sorted(np.unique(data).tolist())
         for i, key in zip(label_values, label_keys, strict=True):
-            labels[key] = np.where(data == i, 1, 0).astype(np.int8)
-    elif metadata.nunique == len(label_keys) + 1 and 0 in np.unique(data):
+            label = np.where((data != i) & (data != -1), 0, data)
+            labels[key] = np.where(label == i, 1, label).astype(np.int8)
+    elif nunique == len(label_keys) + 1 and 0 in np.unique(data):
         logging.info(
             "Assuming 0 is the background class in label data and hasn't been specified in label_keys."
         )
-        label_values = sorted([x for x in np.unique(data).tolist() if x != 0])
+        label_values = sorted([x for x in np.unique(data).tolist() if x > 0])
         for i, key in zip(label_values, label_keys, strict=True):
-            labels[key] = np.where(data == i, 1, 0).astype(np.int8)
+            label = np.where((data != i) & (data != -1), 0, data)
+            labels[key] = np.where(label == i, 1, label).astype(np.int8)
     else:
         raise ValueError(
             f"Number of unique values in label data ({metadata.nunique}) does not match number of provided label keys ({len(label_keys)})."
@@ -206,9 +211,7 @@ def load_labels(
     labels = {}
     if file_path.suffix in [".h5", ".hdf", ".hdf5"]:
         _, data, metadata = read_hdf(file_path, key=key)
-        if (
-            metadata.nunique >= len(label_keys) and metadata.drange[0] >= 0
-        ):  # avoid masked_label edge case
+        if len(label_keys) > 1:
             labels_dict = _match_label_keys_to_data(data, label_keys, metadata)
             labels.update(labels_dict)
         else:
