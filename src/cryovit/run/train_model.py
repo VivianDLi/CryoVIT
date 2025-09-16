@@ -126,10 +126,19 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
         sample = "_".join(sorted(cfg.datamodule.sample))
     else:
         sample = cfg.datamodule.sample
+    if not isinstance(cfg.datamodule.test_sample, str) and isinstance(
+        cfg.datamodule.test_sample, Iterable
+    ):
+        test_sample = "_".join(sorted(cfg.datamodule.test_sample))
+    else:
+        test_sample = cfg.datamodule.test_sample
 
     new_exp_dir = cfg.paths.exp_dir / cfg.name / sample
+    new_exp_dir.mkdir(parents=True, exist_ok=True)
     if cfg.datamodule.split_id is not None:
         new_exp_dir = new_exp_dir / f"split_{cfg.datamodule.split_id}"
+    if test_sample is not None:
+        new_exp_dir = new_exp_dir / f"{test_sample}"
 
     new_exp_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.exp_dir = new_exp_dir
@@ -138,9 +147,9 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     for name, lg in cfg.logger.items():
         if name == "wandb":
             lg.name = (
-                f"{sample}_{cfg.datamodule.split_id}"
+                f"{test_sample or sample}_{cfg.datamodule.split_id}"
                 if cfg.datamodule.split_id is not None
-                else sample
+                else (test_sample or sample)
             )
 
     return cfg
@@ -203,6 +212,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
                 if isinstance(cfg.datamodule.sample, Iterable)
                 else cfg.datamodule.sample
             ),
+            "test_sample": cfg.datamodule.test_sample,
             "cfg": cfg,
             "model": model,
             "model/params/total": sum(p.numel() for p in model.parameters()),

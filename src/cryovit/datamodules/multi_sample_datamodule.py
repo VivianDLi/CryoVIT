@@ -81,6 +81,9 @@ class MultiSampleDataModule(BaseDataModule):
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
         assert self.record_df is not None
+        if self.test_sample is None:
+            return self.val_df()
+
         return self.record_df[
             (self.record_df["sample"].isin(self.test_sample))
         ][["sample", "tomo_name"]]

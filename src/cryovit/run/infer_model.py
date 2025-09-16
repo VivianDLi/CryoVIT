@@ -93,10 +93,18 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
         sample = "_".join(sorted(cfg.datamodule.sample))
     else:
         sample = cfg.datamodule.sample
+    if not isinstance(cfg.datamodule.test_sample, str) and isinstance(
+        cfg.datamodule.test_sample, Iterable
+    ):
+        test_sample = "_".join(sorted(cfg.datamodule.test_sample))
+    else:
+        test_sample = cfg.datamodule.test_sample
 
     new_exp_dir = cfg.paths.exp_dir / cfg.name / sample
     if cfg.datamodule.split_id is not None:
         new_exp_dir = new_exp_dir / f"split_{cfg.datamodule.split_id}"
+    if test_sample is not None:
+        new_exp_dir = new_exp_dir / f"{test_sample}"
 
     cfg.paths.results_dir.mkdir(parents=True, exist_ok=True)
     assert (

@@ -1,0 +1,28 @@
+# @package _global_
+defaults:
+  - override /datamodule: fractional_loo
+
+name: fractional_${hydra:runtime.choices.model}_microtubule
+label_key: microtubule
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule.sample:
+        - Q109_Microtubules
+        - Q18_Microtubules
+        - BACHD_Microtubules
+        - WT_Microtubules
+        - AD
+        - AD_Abeta
+        - Aged
+        - Young
+      datamodule.test_sample:
+        Q109_Microtubules,Q18_Microtubules,BACHD_Microtubules,WT_Microtubules,AD,AD_Abeta,Aged,Young
+      datamodule.split_id:
+        1,2,3,4,5,6,7,8,9,10
+      model:
+        cryovit,unet3d
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun

@@ -81,7 +81,7 @@ class SAM2(BaseModel):
         )
 
     def _masked_predict(
-        self, batch: BatchedTomogramData  # type: ignore
+        self, batch: BatchedTomogramData, use_mito_mask: bool = False  # type: ignore
     ) -> dict[str, Tensor]:
         """Override trainer _masked_predict to handle masking for the prompt predictor."""
         out = self(batch)
@@ -89,6 +89,14 @@ class SAM2(BaseModel):
         y_pred_full, mask_pred_full = out["preds"], out["prompts"]
 
         mask = (y_true > -1.0).detach()
+        if use_mito_mask:
+            assert (
+                batch.aux_data is not None and "labels/mito" in batch.aux_data
+            ), "Batch aux_data must contain 'labels/mito' key for mito masking."
+            # assumes eval code with batch size of 1
+            mito_mask = torch.from_numpy(batch.aux_data["labels/mito"][0]) > 0
+            mito_mask = mito_mask.to(dtype=mask.dtype, device=mask.device)
+            mask = mask & mito_mask  # Combine masks
 
         y_pred = torch.masked_select(y_pred_full, mask).view(-1, 1)
         y_true = torch.masked_select(y_true, mask).view(-1, 1)

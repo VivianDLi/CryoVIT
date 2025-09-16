@@ -1,0 +1,26 @@
+# @package _global_
+defaults:
+  - override /datamodule: fractional_loo
+
+name: fractional_${hydra:runtime.choices.model}_cristae
+label_key: cristae
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule.sample:
+      - Q18
+      - Q53
+      - AD
+      - AD_Abeta
+      - Aged
+      - Young
+      datamodule.test_sample:
+        Q18,Q53,AD,AD_Abeta,Aged,Young
+      datamodule.split_id:
+        1,2,3,4,5,6,7,8,9,10
+      model:
+        cryovit,unet3d
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun

@@ -2,7 +2,6 @@
 
 import pandas as pd
 
-from cryovit.config import hd_samples
 from cryovit.datamodules.base_datamodule import BaseDataModule
 
 
@@ -20,19 +19,19 @@ class FractionalSampleDataModule(BaseDataModule):
         """Train on a fraction of tomograms and leave out one sample for evaluation.
 
         Args:
-            sample (list[str]): The sample to excluded from training and used for testing.
+            sample (list[str]): The samples to train and test on.
             split_id (Optional[int]): The number of splits used for training. If None, defaults to all splits.
             split_key (str): The key used to select splits using split_id.
-            test_sample (Optional[list[str]]): The sample to test on. Should be None.
+            test_sample (Optional[list[str]]): The sample to exclude from training and use for testing.
         """
         super().__init__(**kwargs)
         # Validity checks
         assert (
-            len(sample) == 1
-        ), f"Fractional sample 'sample' should be a single string list. Got {sample} instead."
+            test_sample is not None
+        ), "Fractional sample `test_sample` cannot be None."
         assert (
-            test_sample is None
-        ), f"Fractional sample 'test_sample' should be None. Got {self.test_sample} instead."
+            len(test_sample) == 1
+        ), f"Fractional sample 'test_sample' should be a single string list. Got {test_sample} instead."
 
         self.sample = sample
         self.split_id = split_id
@@ -53,8 +52,8 @@ class FractionalSampleDataModule(BaseDataModule):
 
         return self.record_df[
             (self.record_df[self.split_key].isin(training_splits))
-            & ~(self.record_df["sample"].isin(self.sample))
-            & (self.record_df["sample"].isin(hd_samples))
+            & (self.record_df["sample"].isin(self.sample))
+            & ~self.record_df["sample"].isin(self.test_sample)
         ][["sample", "tomo_name"]]
 
     def val_df(self) -> pd.DataFrame:
@@ -72,7 +71,7 @@ class FractionalSampleDataModule(BaseDataModule):
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
         assert self.record_df is not None
-        return self.record_df[self.record_df["sample"].isin(self.sample)][
+        return self.record_df[self.record_df["sample"].isin(self.test_sample)][
             ["sample", "tomo_name"]
         ]
 

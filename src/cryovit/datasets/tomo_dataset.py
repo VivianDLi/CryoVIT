@@ -130,7 +130,7 @@ class TomoDataset(Dataset):
             if len(data["input"].shape) == 3:  # type: ignore
                 data["input"] = data["input"][np.newaxis, ...]  # type: ignore # add channel dimension
             data["label"] = fh["labels"][self.label_key][()]  # type: ignore
-            data |= {key: fh[key][()] for key in self.aux_keys}  # type: ignore
+            data |= {key: fh[key][()] for key in self.aux_keys if key in fh}  # type: ignore
 
         return data
 

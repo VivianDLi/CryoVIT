@@ -2,6 +2,7 @@ name: ${hydra:runtime.choices.datamodule}_any_${hydra:runtime.choices.model}_${l
 label_key: ???
 additional_keys:
   - data
+  - labels/mito
 random_seed: 42
 
 logger: {}

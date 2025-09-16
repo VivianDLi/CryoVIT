@@ -12,19 +12,6 @@ from omegaconf import MISSING, OmegaConf
 from cryovit.types import Sample
 
 samples: list[str] = [sample.name for sample in Sample]
-hd_samples: list[str] = [
-    "BACHD",
-    "dN17_BACHD",
-    "Q109",
-    "Q18",
-    "Q20",
-    "Q53",
-    "Q53_KD",
-    "Q66",
-    "Q66_GRFS1",
-    "Q66_KD",
-    "WT",
-]
 tomogram_exts: list[str] = [".hdf", ".mrc"]
 
 DINO_PATCH_SIZE = 14
@@ -101,7 +88,7 @@ class BaseDataModule:
     Attributes:
         sample (Union[Sample, tuple[Sample]]): Specific sample or samples used for training.
         split_id (Optional[int]): Optional split_id to use for validation.
-        test_sample (Union[Sample, tuple[Sample]]): Specific sample or samples used for testing.
+        test_sample (Optional[Any]): Specific sample or samples used for testing.
         dataset (dict): Configuration options for the dataset.
         dataloader (dict): Configuration options for the dataloader.
     """

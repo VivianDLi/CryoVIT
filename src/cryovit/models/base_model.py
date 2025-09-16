@@ -25,6 +25,7 @@ class BaseModel(LightningModule, ABC):
         losses: dict[str, Callable],
         metrics: dict[str, Callable],
         name: str = "BaseModel",
+        custom_kwargs: dict | None = None,
         **kwargs,
     ) -> None:
         """Initializes the BaseModel with specified learning rate, weight decay, loss functions, and metrics.
@@ -40,6 +41,10 @@ class BaseModel(LightningModule, ABC):
         self.input_key = input_key
         self.lr = lr
         self.weight_decay = weight_decay
+
+        if custom_kwargs is not None:
+            for key, value in custom_kwargs.items():
+                setattr(self, key, value)
 
         self.configure_losses(losses)
         self.configure_metrics(metrics)
@@ -72,13 +77,21 @@ class BaseModel(LightningModule, ABC):
         self.log_dict(norms, on_step=True)
 
     def _masked_predict(
-        self, batch: BatchedTomogramData  # type: ignore
+        self, batch: BatchedTomogramData, use_mito_mask: bool = False  # type: ignore
     ) -> dict[str, Tensor]:
         """Performs prediction while applying a mask to the inputs and labels based on the label value."""
         y_true = batch.labels  # (B, D, H, W)
 
         y_pred_full = self(batch)  # (B, D, H, W)
         mask = (y_true > -1.0).detach()
+        if use_mito_mask:
+            assert (
+                batch.aux_data is not None and "labels/mito" in batch.aux_data
+            ), "Batch aux_data must contain 'labels/mito' key for mito masking."
+            # assumes eval code with batch size of 1
+            mito_mask = torch.from_numpy(batch.aux_data["labels/mito"][0]) > 0
+            mito_mask = mito_mask.to(dtype=mask.dtype, device=mask.device)
+            mask = mask & mito_mask  # Combine masks
 
         y_pred = torch.masked_select(y_pred_full, mask).view(-1, 1)
         y_true = torch.masked_select(y_true, mask).view(-1, 1)
@@ -158,7 +171,13 @@ class BaseModel(LightningModule, ABC):
         ), "Batch aux_data must contain 'data' key for testing."
         input_data = batch.aux_data["data"]
 
-        out_dict = self._masked_predict(batch)
+        # whether to use mito labels to mask granule predictions in evaluation
+        use_mito_mask = (
+            "labels/mito" in batch.aux_data and batch.aux_data["labels/mito"]
+            if batch.aux_data is not None
+            else False
+        )
+        out_dict = self._masked_predict(batch, use_mito_mask=use_mito_mask)
         y_pred, y_true, y_pred_full = (
             out_dict["preds"],
             out_dict["labels"],
