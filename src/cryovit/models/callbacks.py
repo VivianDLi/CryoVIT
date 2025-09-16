@@ -190,8 +190,12 @@ class CsvWriter(Callback):
         )
 
         # Create results .csv if it doesn't exist
+        metric_names = list(outputs.metrics)
+        column_names = ["sample", "tomo_name"] + metric_names
+        if split_id is not None:
+            column_names += ["split_id"]
         if not self.csv_result_path.exists():
-            results_df = pd.DataFrame()
+            results_df = pd.DataFrame(columns=column_names)
         else:
             results_df = pd.read_csv(self.csv_result_path)
 

@@ -45,7 +45,7 @@ def run_training(
             overrides=[
                 f"name={model_name}",
                 f"label_key={label_key}",
-                f"model={model_type}",
+                f"model={model_type.value}",
                 "datamodule=file",
                 f"trainer.max_epochs={num_epochs}",
             ],

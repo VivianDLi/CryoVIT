@@ -70,7 +70,7 @@ def read_hdf_keys(
             logging.warning(
                 "Key %s not found in file %s. Attempting to read all keys instead.",
                 data_key,
-                hdf_file.name,
+                hdf_file,
             )
     for key in hdf_file:
         if isinstance(hdf_file[key], h5py.Group):
