@@ -11,14 +11,13 @@ on:
 jobs:
   deploy:
     name: Publish Distribution to PyPI
-    if: contains(github.ref, 'tags')
     runs-on: ubuntu-latest
     permissions:
       id-token: write
     steps:
       - uses: actions/checkout@v4
         with:
-          persist-credentials: false
+          ref: ${{ github.ref_name }}
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
