@@ -6,6 +6,7 @@ from cryovit.visualization import (
     process_experiment,
     process_fractional_experiment,
     process_multi_experiment,
+    process_multi_label_experiment,
     process_samples,
     process_single_experiment,
 )
@@ -16,8 +17,6 @@ import logging  # noqa: E402
 model_names = {
     "cryovit": "CryoViT",
     "unet3d": "3D U-Net",
-    "sam2": "SAM2",
-    "medsam": "MedSAM",
 }
 
 experiment_names = {
@@ -32,34 +31,6 @@ experiment_names = {
             for m_key, m_value in model_names.items()
         }
         for s_group in ["ad", "hd", "rgc", "algae"]
-    },
-    "cristae": {
-        s_group: {
-            f"single_{s_group}_{m_key}_cristae": [m_value]
-            for m_key, m_value in model_names.items()
-        }
-        for s_group in ["ad", "hd"]
-    },
-    "microtubules": {
-        s_group: {
-            f"single_{s_group}_{m_key}_microtubule": [m_value]
-            for m_key, m_value in model_names.items()
-        }
-        for s_group in ["ad", "hd"]
-    },
-    "granules": {
-        s_group: {
-            f"single_{s_group}_{m_key}_granule": [m_value]
-            for m_key, m_value in model_names.items()
-        }
-        for s_group in ["hd"]
-    },
-    "bacteria": {
-        s_group: {
-            f"single_{s_group}_{m_key}_bacteria": [m_value]
-            for m_key, m_value in model_names.items()
-        }
-        for s_group in ["campy"]
     },
     "multi": {
         s_group: {
@@ -81,11 +52,25 @@ experiment_names = {
             ("neuron", "fibro_cancer"),
         ]
     },
-    "fractional": {
-        "hd": {
-            f"fractional_{m_key}_mito": [m_value]
+    "multi_label": {
+        s_group: {
+            f"multi_{m_key}_{s_group}": [m_value]
             for m_key, m_value in model_names.items()
         }
+        for s_group in ["cristae", "microtubule", "granule", "bacteria"]
+    },
+    "fractional": {
+        s_group: {
+            f"fractional_{m_key}_{s_group}": [m_value]
+            for m_key, m_value in model_names.items()
+        }
+        for s_group in [
+            "mito",
+            "cristae",
+            "microtubule",
+            "granule",
+            "bacteria",
+        ]
     },
     "sparse": {
         "single": {
@@ -147,7 +132,9 @@ if __name__ == "__main__":
         exp_dir.exists() and exp_dir.is_dir()
     ), "Experiment directory does not exist or is not a directory."
     if args.exp_group is not None:
-        assert args.exp_group in experiment_names[args.exp_type]
+        assert (
+            args.exp_group in experiment_names[args.exp_type]
+        ), f"Experiment group {args.exp_group} not found in experiment type {args.exp_type}. Available groups: {list(experiment_names[args.exp_type].keys())}"
     exp_group = (
         [args.exp_group]
         if args.exp_group
@@ -177,10 +164,15 @@ if __name__ == "__main__":
             process_multi_experiment(
                 args.exp_type, group, combined_names, exp_dir, result_dir
             )
+    elif args.exp_type == "multi_label":
+        for label, names in exp_names.items():
+            process_multi_label_experiment(
+                args.exp_type, label, names, exp_dir, result_dir
+            )
     elif args.exp_type == "fractional":
-        for group, names in exp_names.items():
+        for label, names in exp_names.items():
             process_fractional_experiment(
-                args.exp_type, group, names, exp_dir, result_dir
+                args.exp_type, label, names, exp_dir, result_dir
             )
     elif args.exp_type == "sparse":
         for sample_type, names in exp_names.items():

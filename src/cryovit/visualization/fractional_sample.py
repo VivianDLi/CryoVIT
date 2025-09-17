@@ -14,7 +14,7 @@ from cryovit.visualization.utils import (
 
 def plot_df(
     df: pd.DataFrame,
-    pvalues: dict[str, pd.Series],
+    pvalues: pd.Series,
     key: str,
     title: str,
     file_name: str,
@@ -34,14 +34,12 @@ def plot_df(
     from statannotations.Annotator import Annotator
 
     matplotlib.use("Agg")
-    colors = sns.color_palette("deep")[:4]
+    colors = sns.color_palette("deep")[:3]
     sns.set_theme(style="darkgrid", font="Open Sans")
 
     hue_palette = {
         "3D U-Net": colors[0],
         "CryoViT": colors[1],
-        "SAM2": colors[2],
-        "MedSAM": colors[3],
         "CryoViT with Sparse Labels": colors[1],
         "CryoViT with Dense Labels": colors[2],
     }
@@ -73,11 +71,12 @@ def plot_df(
         **params,
     )
 
-    for k2 in pvalues:
-        pairs = [[(s, "CryoViT"), (s, k2)] for s in pvalues[k2].index]
-        annotator = Annotator(ax, pairs, **params)
-        annotator.configure(color="blue", line_width=1, verbose=False)
-        annotator.set_pvalues_and_annotate(pvalues[k2].values)
+    k1, k2 = df[key].unique()
+    pairs = [[(s, k1), (s, k2)] for s in pvalues.index]
+
+    annotator = Annotator(ax, pairs, **params)
+    annotator.configure(color="blue", line_width=1, verbose=False)
+    annotator.set_pvalues_and_annotate(pvalues[k2].values)
 
     current_labels = ax.get_xticklabels()
     new_labels = [f"{label.get_text()}0%" for label in current_labels]
@@ -102,41 +101,37 @@ def plot_df(
 
 def process_fractional_experiment(
     exp_type: str,
-    exp_group: str,
+    label: str,
     exp_names: dict[str, list[str]],
     exp_dir: Path,
     result_dir: Path,
 ):
     key = "model" if exp_type != "sparse" else "label_type"
     df = merge_experiments(exp_dir, exp_names, keys=[key])
-    p_values = {}
-    for values in exp_names.values():
-        model = values[0]
-        if model == "CryoViT":
-            continue
-        test_fn = functools.partial(
-            significance_test,
-            model_A="CryoViT",
-            model_B=model,
-            key=key,
-            test_fn="ttest_rel",
-        )
-        m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(
-            df,
-            group_keys=["split_id", key],
-            file_name=str(
-                result_dir / f"{exp_group}_{m_name}_{exp_type}_stats.csv"
-            ),
-            test_fn=test_fn,
-        )
+    test_fn = functools.partial(
+        significance_test,
+        model_A=(
+            "CryoViT" if exp_type != "sparse" else "CryoViT with Sparse Labels"
+        ),
+        model_B=(
+            "3D U-Net" if exp_type != "sparse" else "CryoViT with Dense Labels"
+        ),
+        key=key,
+        test_fn="ttest_rel",
+    )
+    p_values = compute_stats(
+        df,
+        group_keys=["split_id", key],
+        file_name=str(result_dir / f"{label}_{exp_type}_stats.csv"),
+        test_fn=test_fn,
+    )
     if exp_type != "sparse":
         plot_df(
             df,
             p_values,
             key,
-            f"Model Comparison on All {exp_group.upper()} Samples",
-            str(result_dir / f"{exp_group}_{exp_type}_comparison"),
+            f"Model Comparison on All {label.upper()} Samples",
+            str(result_dir / f"{label}_{exp_type}_comparison"),
         )
     else:
         plot_df(

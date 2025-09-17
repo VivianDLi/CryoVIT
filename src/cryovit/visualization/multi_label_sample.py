@@ -108,9 +108,9 @@ def plot_df(
     plt.savefig(f"{file_name}.png", dpi=300)
 
 
-def process_single_experiment(
+def process_multi_label_experiment(
     exp_type: str,
-    exp_group: str,
+    label: str,
     exp_names: dict[str, list[str]],
     exp_dir: Path,
     result_dir: Path,
@@ -119,35 +119,22 @@ def process_single_experiment(
     df = merge_experiments(exp_dir, exp_names, keys=["model"])
     test_fn = functools.partial(
         significance_test,
-        model_A=(
-            "CryoViT" if exp_type != "sparse" else "CryoViT with Sparse Labels"
-        ),
-        model_B=(
-            "3D U-Net" if exp_type != "sparse" else "CryoViT with Dense Labels"
-        ),
+        model_A=("CryoViT"),
+        model_B=("3D U-Net"),
         key="model",
         test_fn="wilcoxon",
     )
     p_values = compute_stats(
         df,
-        group_keys=["sample", "model"],
-        file_name=str(result_dir / f"{exp_group}_{exp_type}_stats.csv"),
+        group_keys=["model"],
+        file_name=str(result_dir / f"{label}_{exp_type}_stats.csv"),
         test_fn=test_fn,
     )
 
-    if exp_type != "sparse":
-        plot_df(
-            df,
-            p_values,
-            "model",
-            f"Model Comparison on Individual {exp_group.upper()} Samples for {exp_type.capitalize()}",
-            str(result_dir / f"{exp_group}_{exp_type}_comparison"),
-        )
-    else:
-        plot_df(
-            df,
-            p_values,
-            "model",
-            "CryoViT: Sparse vs Dense Labels Comparison on Individual Samples",
-            str(result_dir / "sparse_vs_dense_comparison"),
-        )
+    plot_df(
+        df,
+        p_values,
+        "model",
+        f"Model Comparison on Individual {label.upper()} Samples for {exp_type.capitalize()}",
+        str(result_dir / f"{label}_{exp_type}_comparison"),
+    )

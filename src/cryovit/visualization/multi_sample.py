@@ -24,7 +24,7 @@ group_names = {
 
 def plot_df(
     df: pd.DataFrame,
-    pvalues: dict[str, pd.Series],
+    pvalues: pd.Series,
     key: str,
     title: str,
     ax,
@@ -42,14 +42,12 @@ def plot_df(
     from statannotations.Annotator import Annotator
 
     matplotlib.use("Agg")
-    colors = sns.color_palette("deep")[:4]
+    colors = sns.color_palette("deep")[:2]
     sns.set_theme(style="darkgrid", font="Open Sans")
 
     hue_palette = {
         "3D U-Net": colors[0],
         "CryoViT": colors[1],
-        "SAM2": colors[2],
-        "MedSAM": colors[3],
     }
 
     sample_counts = df["sample"].value_counts()
@@ -82,11 +80,12 @@ def plot_df(
         **params,
     )
 
-    for k2 in pvalues:
-        pairs = [[(s, "CryoViT"), (s, k2)] for s in pvalues[k2].index]
-        annotator = Annotator(ax, pairs, **params)
-        annotator.configure(color="blue", line_width=1, verbose=False)
-        annotator.set_pvalues_and_annotate(pvalues[k2].values)
+    k1, k2 = df[key].unique()
+    pairs = [[(s, k1), (s, k2)] for s in pvalues.index]
+
+    annotator = Annotator(ax, pairs, **params)
+    annotator.configure(color="blue", line_width=1, verbose=False)
+    annotator.set_pvalues_and_annotate(pvalues[k2].values)
 
     current_labels = ax.get_xticklabels()
     new_labels = [
@@ -132,54 +131,41 @@ def process_multi_experiment(
     ax2 = fig.add_subplot(gs[1])
 
     # Plot forward comparison (s1 vs. s2)
-    p_values = {}
-    for values in exp_names.values():
-        model = values[0]
-        if model == "CryoViT":
-            continue
-        test_fn = functools.partial(
-            significance_test,
-            model_A="CryoViT",
-            model_B=model,
-            key="model",
-            test_fn="wilcoxon",
-        )
-        m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(
-            forward_df,
-            group_keys=["sample", "model"],
-            file_name=str(
-                result_dir
-                / f"{'_'.join(list(exp_group))}_{m_name}_{exp_type}_stats.csv"
-            ),
-            test_fn=test_fn,
-        )
+    test_fn = functools.partial(
+        significance_test,
+        model_A="CryoViT",
+        model_B="3D U-Net",
+        key="model",
+        test_fn="wilcoxon",
+    )
+    p_values = compute_stats(
+        forward_df,
+        group_keys=["sample", "model"],
+        file_name=str(
+            result_dir / f"{'_'.join(list(exp_group))}_{exp_type}_stats.csv"
+        ),
+        test_fn=test_fn,
+    )
     title = f"{group_names[exp_group[0]]} to {group_names[exp_group[1]]} Shift"
     plot_df(forward_df, p_values, "model", title, ax1)
 
     # Plot backward comparison (s2 vs. s1)
-    p_values = {}
-    for values in exp_names.values():
-        model = values[0]
-        if model == "CryoViT":
-            continue
-        test_fn = functools.partial(
-            significance_test,
-            model_A="CryoViT",
-            model_B=model,
-            key="model",
-            test_fn="wilcoxon",
-        )
-        m_name = model.replace(" ", "").lower()
-        p_values[model] = compute_stats(
-            backward_df,
-            group_keys=["sample", "model"],
-            file_name=str(
-                result_dir
-                / f"{'_'.join(list(reversed(exp_group)))}_{m_name}_{exp_type}_stats.csv"
-            ),
-            test_fn=test_fn,
-        )
+    test_fn = functools.partial(
+        significance_test,
+        model_A="CryoViT",
+        model_B="3D U-Net",
+        key="model",
+        test_fn="wilcoxon",
+    )
+    p_values = compute_stats(
+        backward_df,
+        group_keys=["sample", "model"],
+        file_name=str(
+            result_dir
+            / f"{'_'.join(list(reversed(exp_group)))}_{exp_type}_stats.csv"
+        ),
+        test_fn=test_fn,
+    )
     title = f"{group_names[exp_group[1]]} to {group_names[exp_group[0]]} Shift"
     plot_df(backward_df, p_values, "model", title, ax2)
 

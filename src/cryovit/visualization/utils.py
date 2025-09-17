@@ -20,6 +20,9 @@ def merge_experiments(
     Returns:
         pd.DataFrame: A DataFrame containing merged experiment data.
     """
+    if not exp_dir.exists():
+        raise ValueError(f"The directory {exp_dir} does not exist")
+
     if keys is None:
         keys = ["model"]
     results = []

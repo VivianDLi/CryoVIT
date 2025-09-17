@@ -2,7 +2,7 @@
 defaults:
   - override /datamodule: multi
 
-name: multi_${hydra:runtime.choices.model}_cristae_{model.custom_kwargs.use_mito_mask}
+name: multi_${hydra:runtime.choices.model}_cristae
 label_key: cristae
 
 model:
