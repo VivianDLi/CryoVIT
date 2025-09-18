@@ -1,4 +1,4 @@
-"""Base Model class for 3D Tomogram Segmentation."""
+"""Base Lightning Module class for 3D Tomogram Segmentation."""
 
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -31,11 +31,15 @@ class BaseModel(LightningModule, ABC):
         """Initializes the BaseModel with specified learning rate, weight decay, loss functions, and metrics.
 
         Args:
+            input_key (str): Key to access input data in the batch.
             lr (float): Learning rate for the optimizer.
             weight_decay (float): Weight decay factor for AdamW optimizer.
-            losses (list[dict]): list of loss function configs instances for training, validation, and testing.
-            metrics (list[dict]): list of metric function configs for training, validation, and testing.
+            losses (dict[str, Callable]): Dictionary of loss functions for training, validation, and testing.
+            metrics (dict[str, Callable]): Dictionary of metric functions for training, validation, and testing.
+            name (str): Name of the model.
+            custom_kwargs (Optional[dict[str, Any]]): Additional custom keyword arguments to set as attributes.
         """
+
         super().__init__()
         self.name = name
         self.input_key = input_key
@@ -52,7 +56,6 @@ class BaseModel(LightningModule, ABC):
         self.save_hyperparameters()
 
     def configure_optimizers(self) -> Optimizer:
-        """Configures the optimizer with the initialization parameters."""
         return torch.optim.AdamW(
             self.parameters(),
             lr=self.lr,
@@ -73,6 +76,7 @@ class BaseModel(LightningModule, ABC):
 
     def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
         """Logs gradient norms just before the optimizer updates weights."""
+
         norms = grad_norm(self, norm_type=2)
         self.log_dict(norms, on_step=True)
 
@@ -80,6 +84,7 @@ class BaseModel(LightningModule, ABC):
         self, batch: BatchedTomogramData, use_mito_mask: bool = False  # type: ignore
     ) -> dict[str, Tensor]:
         """Performs prediction while applying a mask to the inputs and labels based on the label value."""
+
         y_true = batch.labels  # (B, D, H, W)
 
         y_pred_full = self(batch)  # (B, D, H, W)
@@ -112,6 +117,7 @@ class BaseModel(LightningModule, ABC):
         batch_size: int,
     ) -> None:
         """Logs computed loss and metric statistics for each training or validation step."""
+
         # Log losses
         loss_log_dict = {f"{prefix}/loss/{k}": v for k, v in losses.items()}
         on_step = prefix == "train"
@@ -137,6 +143,7 @@ class BaseModel(LightningModule, ABC):
 
     def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> Tensor:  # type: ignore
         """Processes a single batch of data, computes the loss and updates metrics."""
+
         out = self._masked_predict(batch)
         y_pred, y_true = out["preds"], out["labels"]
 
@@ -149,11 +156,13 @@ class BaseModel(LightningModule, ABC):
         return losses["total"]
 
     def training_step(self, batch: BatchedTomogramData, batch_idx: int) -> Tensor:  # type: ignore
-        """Processes one batch during training."""
+        """Processes one batch during training, returning the total loss."""
+
         return self._do_step(batch, batch_idx, "train")  # type: ignore
 
     def validation_step(self, batch: BatchedTomogramData, batch_idx: int) -> Tensor:  # type: ignore
-        """Processes one batch during validation."""
+        """Processes one batch during validation, returning the total loss."""
+
         return self._do_step(batch, batch_idx, "val")  # type: ignore
 
     def test_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:  # type: ignore
@@ -164,8 +173,9 @@ class BaseModel(LightningModule, ABC):
             batch_idx (int): Index of the batch.
 
         Returns:
-            dict[str, Any]: A dictionary containing test results and metrics for this batch.
+            BatchedModelResult: Contains test results and metrics, as well as file metadata for this batch.
         """
+
         assert (
             batch.aux_data is not None and "data" in batch.aux_data
         ), "Batch aux_data must contain 'data' key for testing."
@@ -223,6 +233,16 @@ class BaseModel(LightningModule, ABC):
         )
 
     def predict_step(self, batch: BatchedTomogramData, batch_idx: int) -> BatchedModelResult:  # type: ignore
+        """Processes one batch during prediction, capturing model outputs along with file metadata.
+
+        Args:
+            batch (BatchedTomogramData): The batch of data being processed.
+            batch_idx (int): Index of the batch.
+
+        Returns:
+            BatchedModelResult: Contains test results and metrics, as well as file metadata for this batch.
+        """
+
         assert (
             batch.aux_data is not None and "data" in batch.aux_data
         ), "Batch aux_data must contain 'data' key for prediction."
@@ -247,6 +267,7 @@ class BaseModel(LightningModule, ABC):
     @abstractmethod
     def forward(self):
         """Should be implemented in subclass."""
+
         raise NotImplementedError(
             "The forward method must be implemented by subclass."
         )

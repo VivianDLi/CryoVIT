@@ -95,6 +95,15 @@ def process_experiment(
     exp_template: str,
     labels: list[str] | None,
 ) -> None:
+    """Process segmentation results from multiple labels and save combined visualizations as a video.
+
+    Args:
+        exp_dir (Path): Directory containing experiment results
+        result_dir (Path): Directory to save results
+        exp_template (str): String to identify relevant experiment directories (i.e., start with exp_template), where the label is assumed to be the suffix after the last underscore.
+        labels (list[str] | None): List of labels to process. If None, all labels found based on the `exp_template` will be processed.
+    """
+
     import seaborn as sns
 
     colors = sns.color_palette("deep")[:4]

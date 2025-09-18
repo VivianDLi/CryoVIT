@@ -13,22 +13,14 @@ from cryovit.visualization.utils import (
 )
 
 
-def plot_df(
+def _plot_df(
     df: pd.DataFrame,
     pvalues: pd.Series,
     key: str,
     title: str,
     file_name: str,
 ):
-    """Plot DataFrame results with box and strip plots including annotations for statistical tests.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing the data to plot.
-        pvalues (dict[str, pd.Series]): dictionary containing p-values for annotations for each model.
-        key (str): The column name used to group data points in the plot.
-        title (str): The title of the plot.
-        file_name (str): Base file name for saving the plot images.
-    """
+    # import here to avoid unnecessary dependencies if function not used
     import matplotlib
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -82,7 +74,7 @@ def plot_df(
 
     annotator = Annotator(ax, pairs, **params)
     annotator.configure(color="blue", line_width=1, verbose=False)
-    annotator.set_pvalues_and_annotate(pvalues[k2].values)
+    annotator.set_pvalues_and_annotate(pvalues.values)
 
     current_labels = ax.get_xticklabels()
     new_labels = [
@@ -115,6 +107,16 @@ def process_single_experiment(
     exp_dir: Path,
     result_dir: Path,
 ):
+    """Plot single sample experiment results with box and strip plots including annotations for statistical tests.
+
+    Args:
+        exp_type (str): Type of experiment, e.g. "single", "sparse"
+        exp_group (str): Group of experiments, e.g. "hd", "ad"
+        exp_names (dict[str, list[str]]): Dictionary mapping experiment names to model used
+        exp_dir (Path): Directory containing experiment results
+        result_dir (Path): Directory to save results
+    """
+
     result_dir.mkdir(parents=True, exist_ok=True)
     df = merge_experiments(exp_dir, exp_names, keys=["model"])
     test_fn = functools.partial(
@@ -136,15 +138,15 @@ def process_single_experiment(
     )
 
     if exp_type != "sparse":
-        plot_df(
+        _plot_df(
             df,
             p_values,
             "model",
-            f"Model Comparison on Individual {exp_group.upper()} Samples for {exp_type.capitalize()}",
+            f"Model Comparison on Individual {exp_group.upper()} Samples for Mitochondria",
             str(result_dir / f"{exp_group}_{exp_type}_comparison"),
         )
     else:
-        plot_df(
+        _plot_df(
             df,
             p_values,
             "model",

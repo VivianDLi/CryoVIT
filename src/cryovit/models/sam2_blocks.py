@@ -1,4 +1,4 @@
-"""Transformer-based prompt predictor for SAM2 using image encodings and learnable prompt tokens. Based on the prompt predictor in https://github.com/aswahd/SamRadiology/"""
+"""3D U-Net-based prompt predictor for SAM2 using image encodings, based on the prompt predictor in https://github.com/ChengyinLee/AutoProSAM_2024/ and nnU-Net, and LoRA adaptation for the MaskDecoder."""
 
 import numpy as np
 import torch
@@ -219,6 +219,7 @@ class LoRAMaskDecoderFactory:
 
     def apply(self, mask_decoder: nn.Module) -> nn.Module:
         """Applies LoRA to all transformer blocks in the MaskDecoder."""
+
         for p in mask_decoder.parameters():
             p.requires_grad = False
 

@@ -10,6 +10,7 @@ class DiceLoss(nn.Module):
 
     def __init__(self) -> None:
         """Initializes the DiceLoss instance."""
+
         super().__init__()
         self.name = "DiceLoss"
 
@@ -23,6 +24,7 @@ class DiceLoss(nn.Module):
         Returns:
             Tensor: Computed Dice loss value.
         """
+
         intersection = torch.sum(y_true * y_pred)
         denom = torch.sum(y_true) + torch.sum(y_pred)
         dice_loss = 1 - (2 * intersection) / (denom + 1e-3)
@@ -39,6 +41,7 @@ class FocalLoss(nn.Module):
         Args:
             gamma (float, optional): Focusing parameter. Default is 2.
         """
+
         super().__init__()
         self.gamma = gamma
         self.name = "FocalLoss"
@@ -53,6 +56,7 @@ class FocalLoss(nn.Module):
         Returns:
             Tensor: Computed Focal loss value.
         """
+
         weight = (y_true.numel() - y_true.sum()) / y_true.numel()
         return sigmoid_focal_loss(
             y_pred,

@@ -21,6 +21,7 @@ class TestPredictionWriter(Callback):
         Args:
             results_dir (Path): directory in which the predictions should be saved.
         """
+
         self.results_dir = (
             results_dir if isinstance(results_dir, Path) else Path(results_dir)
         )
@@ -35,16 +36,8 @@ class TestPredictionWriter(Callback):
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> None:
-        """Handles the end of a test batch to save outputs.
+        """Handles the end of a test batch to save outputs."""
 
-        Args:
-            trainer (Trainer): The PyTorch Lightning Trainer instance.
-            pl_module (LightningModule): The module being tested.
-            outputs (BatchedModelResult): Outputs from the test batch.
-            batch (Any): The batch of data.
-            batch_idx (int): Index of the current batch.
-            dataloader_idx (int): Index of the dataloader.
-        """
         assert isinstance(outputs, BatchedModelResult)
         for n in range(outputs.num_tomos):
             output_file = (
@@ -89,6 +82,7 @@ class PredictionWriter(BasePredictionWriter):
         Args:
             results_dir (Path): directory in which the predictions should be saved.
         """
+
         super().__init__(write_interval="batch", **kwargs)
         self.results_dir = (
             results_dir if isinstance(results_dir, Path) else Path(results_dir)
@@ -107,6 +101,8 @@ class PredictionWriter(BasePredictionWriter):
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
+        """Handles the end of a prediction batch to save outputs."""
+
         for n in range(prediction.num_tomos):
             result_path = self.results_dir / prediction.tomo_names[n]
             result_path = result_path.with_suffix(".hdf")
@@ -135,6 +131,7 @@ class CsvWriter(Callback):
         Args:
             csv_result_path (Path): .csv file in which metrics should be saved.
         """
+
         self.csv_result_path = (
             csv_result_path
             if isinstance(csv_result_path, Path)
@@ -169,16 +166,8 @@ class CsvWriter(Callback):
         batch_idx: int,
         dataloader_idx: int = 0,
     ) -> None:
-        """Handles the end of a test batch to save metrics.
+        """Handles the end of a test batch to save metrics."""
 
-        Args:
-            trainer (Trainer): The PyTorch Lightning Trainer instance.
-            pl_module (LightningModule): The module being tested.
-            outputs (BatchedModelResult): Outputs from the test batch.
-            batch (Any): The batch of data.
-            batch_idx (int): Index of the current batch.
-            dataloader_idx (int): Index of the dataloader.
-        """
         assert isinstance(outputs, BatchedModelResult)
         assert (
             outputs.num_tomos == 1

@@ -7,12 +7,12 @@ from pathlib import Path
 from pytorch_lightning import LightningDataModule
 from torch.utils.data import DataLoader
 
-from cryovit.datamodules.base_datamodule import collate_fn
+from cryovit.datamodules.utils import collate_fn
 from cryovit.types import FileData
 
 
 class FileDataModule(LightningDataModule):
-    """Module defining common functions for creating data loaders."""
+    """Module defining common functions for creating data loaders for file-based datasets."""
 
     def __init__(
         self,
@@ -28,10 +28,15 @@ class FileDataModule(LightningDataModule):
         """Initializes the BaseDataModule with dataset parameters, a dataloader function, and a path to the split file.
 
         Args:
-            split_file (Path): The path to the CSV file containing data splits.
+            data_paths (list[Path]): A list of paths to the data files for training/testing/prediction.
+            dataset_fn (Callable): Function to create a Dataset from a list of FileData objects.
             dataloader_fn (Callable): Function to create a DataLoader from a dataset.
-            dataset_params (Callable): Function to create a Dataset from a dataframe of records.
+            val_paths (Optional[list[Path]]): A list of paths to the data files for validation.
+            data_labels (Optional[list[Path]]): A list of paths to the label files for training/testing/prediction. Should only be missing for inference.
+            val_labels (Optional[list[Path]]): A list of paths to the label files for validation.
+            labels (Optional[list[str]]): A list of label keys to load from the label files. Should only be missing if no labels are provided.
         """
+
         super().__init__()
         self.data_files = self._combine_files_and_labels(
             data_paths, data_labels, labels
@@ -50,6 +55,8 @@ class FileDataModule(LightningDataModule):
         labels: list[Path] | None,
         label_keys: list[str] | None,
     ) -> list[FileData]:
+        """Combines data files and label files into a list of FileData objects. Replaces missing labels with None."""
+
         file_labels = [None] * len(files) if labels is None else labels
         if len(files) != len(file_labels):
             raise ValueError(
@@ -78,6 +85,7 @@ class FileDataModule(LightningDataModule):
         Returns:
             DataLoader: A DataLoader instance for training data.
         """
+
         if len(self.data_files) == 0:
             raise ValueError("No training data provided.")
         dataset = self.dataset_fn(self.data_files, train=True)
@@ -89,8 +97,11 @@ class FileDataModule(LightningDataModule):
         Returns:
             DataLoader: A DataLoader instance for validation data.
         """
+
         if len(self.val_files) == 0:
-            logging.info("No validation data provided, using training data.")
+            logging.warning(
+                "No validation data provided, using training data."
+            )
             val_files = self.data_files
         else:
             val_files = self.val_files
@@ -105,6 +116,7 @@ class FileDataModule(LightningDataModule):
         Returns:
             DataLoader: A DataLoader instance for testing data.
         """
+
         if len(self.data_files) == 0:
             raise ValueError("No testing data provided.")
         dataset = self.dataset_fn(self.data_files, train=False)
@@ -118,9 +130,10 @@ class FileDataModule(LightningDataModule):
         Returns:
             DataLoader: A DataLoader instance for prediction data.
         """
+
         if len(self.data_files) == 0:
             raise ValueError("No prediction data provided.")
-        dataset = self.dataset_fn(self.data_files, train=False, predict=True)
+        dataset = self.dataset_fn(self.data_files, train=False)
         return self.dataloader_fn(
             dataset, shuffle=False, collate_fn=collate_fn
         )

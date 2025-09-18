@@ -12,22 +12,13 @@ from cryovit.visualization.utils import (
 )
 
 
-def plot_df(
+def _plot_df(
     df: pd.DataFrame,
     pvalues: pd.Series,
     key: str,
     title: str,
     file_name: str,
 ):
-    """Plot DataFrame results with box and strip plots including annotations for statistical tests.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing the data to plot.
-        pvalues (pd.Series): Series containing p-values for annotations.
-        key (str): The column name used to group data points in the plot.
-        title (str): The title of the plot.
-        file_name (str): Base file name for saving the plot images.
-    """
     import matplotlib
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -76,7 +67,7 @@ def plot_df(
 
     annotator = Annotator(ax, pairs, **params)
     annotator.configure(color="blue", line_width=1, verbose=False)
-    annotator.set_pvalues_and_annotate(pvalues[k2].values)
+    annotator.set_pvalues_and_annotate(pvalues.values)
 
     current_labels = ax.get_xticklabels()
     new_labels = [f"{label.get_text()}0%" for label in current_labels]
@@ -106,6 +97,16 @@ def process_fractional_experiment(
     exp_dir: Path,
     result_dir: Path,
 ):
+    """Plot fractional experiment results with box and strip plots including annotations for statistical tests.
+
+    Args:
+        exp_type (str): Type of experiment, e.g., "fractional", "sparse"
+        label (str): The label being analyzed, e.g., "mito", "cristae"
+        exp_names (dict[str, list[str]]): Dictionary mapping experiment names to model used
+        exp_dir (Path): Directory containing the experiment results
+        result_dir (Path): Directory to save the results
+    """
+
     key = "model" if exp_type != "sparse" else "label_type"
     df = merge_experiments(exp_dir, exp_names, keys=[key])
     test_fn = functools.partial(
@@ -126,7 +127,7 @@ def process_fractional_experiment(
         test_fn=test_fn,
     )
     if exp_type != "sparse":
-        plot_df(
+        _plot_df(
             df,
             p_values,
             key,
@@ -134,7 +135,7 @@ def process_fractional_experiment(
             str(result_dir / f"{label}_{exp_type}_comparison"),
         )
     else:
-        plot_df(
+        _plot_df(
             df,
             p_values,
             key,

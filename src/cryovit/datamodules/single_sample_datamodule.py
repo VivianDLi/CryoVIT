@@ -22,8 +22,9 @@ class SingleSampleDataModule(BaseDataModule):
             sample (list[str]): The sample to train on.
             split_id (Optional[int]): An optional split_id to validate with.
             split_key (str): The key used to select splits using split_id.
-            test_sample (Optional[list[str]]): The sample to test on. Should be equal to sample or None.
+            test_sample (Optional[list[str]]): The sample to test on. If None, test on the validation set.
         """
+
         super().__init__(**kwargs)
         # Validity checks
         assert (
@@ -46,6 +47,7 @@ class SingleSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the train tomograms.
         """
+
         assert self.record_df is not None
         if self.split_id is not None:
             df = self.record_df[
@@ -64,6 +66,7 @@ class SingleSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the validation tomograms.
         """
+
         assert self.record_df is not None
         if self.split_id is None:  # validate on train set
             return self.train_df()
@@ -74,11 +77,12 @@ class SingleSampleDataModule(BaseDataModule):
         ]
 
     def test_df(self) -> pd.DataFrame:
-        """Test tomograms: test on tomograms with the specified split_id.
+        """Test tomograms: test on tomograms from the specified test_sample or split_id.
 
         Returns:
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
+
         assert self.record_df is not None
         if self.test_sample is None:
             return self.val_df()
@@ -89,6 +93,12 @@ class SingleSampleDataModule(BaseDataModule):
         ]
 
     def predict_df(self) -> pd.DataFrame:
+        """Predict tomograms: predict on the whole sample.
+
+        Returns:
+            pd.DataFrame: A dataframe specifying the predict tomograms.
+        """
+
         assert self.record_df is not None
         return self.record_df[self.record_df["sample"] == self.sample][
             ["sample", "tomo_name"]

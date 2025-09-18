@@ -12,6 +12,7 @@ class CryoVIT(BaseModel):
 
     def __init__(self, **kwargs) -> None:
         """Initializes the CryoVIT model with specific convolutional and synthesis blocks."""
+
         super().__init__(**kwargs)
 
         self.layers = nn.Sequential(
@@ -40,6 +41,7 @@ class CryoVIT(BaseModel):
 
     def forward(self, batch: BatchedTomogramData) -> Tensor:  # type: ignore
         """Forward pass for the CryoVIT model."""
+
         x = batch.tomo_batch  # (B, D, C, H, W)
         x = x.permute(0, 2, 1, 3, 4)  # (B, C, D, H, W)
         x = self.forward_volume(x)
@@ -60,6 +62,7 @@ class SynthesisBlock(nn.Module):
             d1 (int): Depthwise dilation rate for the first 3D Conv layer.
             d2 (int): Depthwise dilation rate for the second 3D Conv layer.
         """
+
         super().__init__()
 
         self.layers = nn.Sequential(
@@ -76,4 +79,5 @@ class SynthesisBlock(nn.Module):
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass for the synthesis block."""
+
         return self.layers(x)

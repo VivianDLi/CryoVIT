@@ -10,16 +10,20 @@ def merge_experiments(
     exp_names: dict[str, list[str]],
     keys: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Merge multiple experiment results into a single DataFrame.
+    """Merge multiple experiment results into a single DataFrame, adding additional labels for each experiment.
 
     Args:
         exp_dir (Path): The directory containing experiment results (.csvs).
-        exp_names (dict[str, list[str]]): A dictionary mapping experiment subdirectory names to labels.
-        keys (list[str]): The column names to assign to the experiment labels in the merged DataFrame.
+        exp_names (dict[str, list[str]]): A dictionary mapping experiment names to labels.
+        keys (list[str]): The column names to assign to the experiment labels in the merged DataFrame. If None, defaults to ["model"].
+
+    Raises:
+        ValueError: If the specified experiment directory does not exist.
 
     Returns:
         pd.DataFrame: A DataFrame containing merged experiment data.
     """
+
     if not exp_dir.exists():
         raise ValueError(f"The directory {exp_dir} does not exist")
 
@@ -50,14 +54,21 @@ def significance_test(
         group (pd.DataFrame): Grouped DataFrame to perform the test on.
         model_A (str): The name of the first model.
         model_B (str): The name of the second model.
-        key (str): Column name to group the DataFrame on.
+        key (str): Column name to get model names.
         test_fn (str): The statistical test function to use (e.g., wilcoxon, ttest_rel).
+
+    Raises:
+        ValueError: If an unknown test function is provided.
 
     Returns:
         float: The p-value from the statistical test.
     """
+
     score_A = df[df[key] == model_A].sort_values("tomo_name").dice_metric
     score_B = df[df[key] == model_B].sort_values("tomo_name").dice_metric
+    assert len(score_A) == len(
+        score_B
+    ), "The two models must have the same number of samples for comparison."
 
     if test_fn == "wilcoxon":
         _, pvalue = wilcoxon(
@@ -80,10 +91,12 @@ def compute_stats(
         df (pd.DataFrame): The DataFrame to compute statistics on.
         group_keys (list[str]): The column names used to group data for statistics. The first element is used for the p-value calculation.
         file_name (str): The file path to save the statistics.
+        test_fn (Callable): A function to compute p-values between groups.
 
     Returns:
         pd.Series: A Series containing p-values for statistical tests.
     """
+
     grouped = df.groupby(group_keys, sort=False)["dice_metric"].agg(
         mean="mean",
         std="std",

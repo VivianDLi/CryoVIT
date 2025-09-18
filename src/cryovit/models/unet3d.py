@@ -14,6 +14,7 @@ class UNet3D(BaseModel):
 
     def __init__(self, **kwargs) -> None:
         """Initializes the UNet3D model with specific analysis and synthesis blocks."""
+
         super().__init__(**kwargs)
 
         self.bottom_layer = nn.Sequential(
@@ -46,6 +47,7 @@ class UNet3D(BaseModel):
 
     def forward_volume(self, x: Tensor) -> Tensor:
         """Memory optimized forward pass for the UNet3D model."""
+
         analysis_outputs = []
 
         for block in self.analysis_layers:
@@ -92,6 +94,7 @@ class UNet3D(BaseModel):
     @torch.inference_mode()
     def _add_padding(self, x: Tensor, new_size: list[int]) -> Tensor:
         """Adds padding to the input to match the U-Net dimensions"""
+
         # pad to multiple of self.PAD
         D, H, W = x.size()[-3:]
         new_shape = list(x.shape[:-3]) + new_size
@@ -111,6 +114,7 @@ class AnalysisBlock(nn.Module):
             in_channels (int): Number of input channels.
             out_channels (int): Number of output channels.
         """
+
         super().__init__()
         self.pool = nn.Sequential(
             nn.Conv3d(out_channels, out_channels, 2, stride=2),
@@ -129,6 +133,7 @@ class AnalysisBlock(nn.Module):
 
     def forward(self, x: Tensor) -> tuple[Tensor, Tensor]:
         """Forward pass for the analysis block."""
+
         x = self.layers(x)
         y = self.pool(x)
         return y, x
@@ -147,6 +152,7 @@ class SynthesisBlock(nn.Module):
             skip_channels (int): Number of channels from the skip connection.
             out_channels (int): Number of output channels.
         """
+
         super().__init__()
         self.upconv = nn.Sequential(
             nn.ConvTranspose3d(in_channels, out_channels, 2, stride=2),
@@ -165,6 +171,7 @@ class SynthesisBlock(nn.Module):
 
     def forward(self, x: Tensor, skip_x: Tensor) -> Tensor:
         """Forward pass for the synthesis block."""
+
         x = self.upconv(x)
         x = torch.cat([x, skip_x], 1)  # channel concat
         x = self.layers(x)
@@ -181,11 +188,13 @@ class LinearProjection(nn.Module):
             in_channels (int): Number of input channels.
             out_channels (int): Number of output channels after projection.
         """
+
         super().__init__()
         self.proj = nn.Linear(in_channels, out_channels)
 
     def forward(self, x: Tensor) -> Tensor:
         """Forward pass for the linear projection layer."""
+
         x = torch.permute(x, (0, 2, 3, 4, 1))
         x = self.proj(x)
         x = torch.permute(x, (0, 4, 1, 2, 3))

@@ -11,7 +11,7 @@ from cryovit.visualization import (
     process_single_experiment,
 )
 
-setup_logging("DEBUG")
+setup_logging("INFO")
 import logging  # noqa: E402
 
 model_names = {
@@ -25,7 +25,7 @@ experiment_names = {
         s_group: {m_key: f"single_{s_group}_{m_key}" for m_key in model_names}
         for s_group in ["ad", "hd"]
     },
-    "mitochondria": {
+    "single": {
         s_group: {
             f"single_{s_group}_{m_key}_mito": [m_value]
             for m_key, m_value in model_names.items()
@@ -53,11 +53,15 @@ experiment_names = {
         ]
     },
     "multi_label": {
-        s_group: {
-            f"multi_{m_key}_{s_group}": [m_value]
-            for m_key, m_value in model_names.items()
-        }
-        for s_group in ["cristae", "microtubule", "granule", "bacteria"]
+        f"multi_{m_key}_{s_group}": [m_value, s_group]
+        for m_key, m_value in model_names.items()
+        for s_group in [
+            "mito",
+            "cristae",
+            "microtubule",
+            "granule",
+            "bacteria",
+        ]
     },
     "fractional": {
         s_group: {
@@ -86,7 +90,7 @@ experiment_names = {
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Visualize the results of certain CryoViT experiments."
+        description="Main function to visualize the results of certain CryoViT experiments."
     )
     parser.add_argument(
         "--exp_dir",
@@ -165,10 +169,9 @@ if __name__ == "__main__":
                 args.exp_type, group, combined_names, exp_dir, result_dir
             )
     elif args.exp_type == "multi_label":
-        for label, names in exp_names.items():
-            process_multi_label_experiment(
-                args.exp_type, label, names, exp_dir, result_dir
-            )
+        process_multi_label_experiment(
+            args.exp_type, exp_names, exp_dir, result_dir
+        )
     elif args.exp_type == "fractional":
         for label, names in exp_names.items():
             process_fractional_experiment(

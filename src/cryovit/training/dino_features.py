@@ -1,5 +1,3 @@
-"""Script to extract DINOv2 features from tomograms."""
-
 import traceback
 import warnings
 
@@ -28,10 +26,8 @@ def main(cfg: DinoFeaturesConfig) -> None:
 
     Args:
         cfg (DinoFeaturesConfig): Configuration object loaded from dino_features.yaml.
-
-    Raises:
-        BaseException: Captures and logs any exceptions that occur during the processing of the sample.
     """
+
     validate_dino_config(cfg)
 
     try:

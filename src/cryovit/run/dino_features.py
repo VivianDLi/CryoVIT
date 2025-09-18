@@ -1,4 +1,4 @@
-"""Script for extracting DINOv2 features from tomograms."""
+"""Functions to load data and run DINOv2 feature extraction."""
 
 import logging
 from pathlib import Path
@@ -15,6 +15,7 @@ from numpy.typing import NDArray
 from rich.progress import track
 
 from cryovit.config import (
+    DEFAULT_WINDOW_SIZE,
     DINO_PATCH_SIZE,
     BaseDataModule,
     DinoFeaturesConfig,
@@ -30,13 +31,12 @@ dino_model = (
     "dinov2_vitg14_reg",
 )  # the giant variant of DINOv2
 
-DEFAULT_WINDOW_SIZE = 630  # 720 // 16 * 14
-
 
 def _folded_to_patch(
     x: torch.Tensor, C: int, window_size: tuple[int, int]
 ) -> tuple[torch.Tensor, int, int]:
     """Convert unfolded tensor to patch features tensor shape."""
+
     B, _, L = x.shape  # B, C * window_size * window_size, L
     x = x.permute(0, 2, 1).contiguous()  # B, L, C * window_size * window_size
     x = x.reshape(
@@ -47,6 +47,7 @@ def _folded_to_patch(
 
 def _patch_to_folded(x: torch.Tensor, B: int, L: int) -> torch.Tensor:
     """Convert patch features tensor to folded tensor shape."""
+
     x = x.reshape(
         B, L, x.shape[1], x.shape[2]
     )  # B, L, window_size * window_size, C2
@@ -69,11 +70,13 @@ def _dino_features(
     Args:
         data (torch.Tensor): The input data tensors containing the tomogram's data.
         model (nn.Module): The pre-loaded DINOv2 model used for feature extraction.
-        batch_size (int): The number of 2D slices of a tomograms processed in each batch.
+        batch_size (int): The maximum number of 2D slices of a tomograms processed in each batch.
+        window_size (Optional[tuple[int, int] | int]): The size of the windows to use for feature extraction.
 
     Returns:
         NDArray[np.float16]: A numpy array containing the extracted features in reduced precision.
     """
+
     if window_size is None:
         window_size = (DEFAULT_WINDOW_SIZE, DEFAULT_WINDOW_SIZE)
     elif isinstance(window_size, int):
@@ -84,24 +87,17 @@ def _dino_features(
         W // DINO_PATCH_SIZE,
     )  # the number of patches extracted per slice
     window_size = (min(window_size[0], H), min(window_size[1], W))
-    dilation = (
-        max((W - 1) // window_size[1], 1),
-        max((H - 1) // window_size[0], 1),
-    )  # at least 1 and not equal to image size
     stride = tuple(
-        (((d * ws) // 4) // DINO_PATCH_SIZE) * DINO_PATCH_SIZE
-        for d, ws in zip(dilation, window_size, strict=True)
-    )  # 75% overlap, multiple of 14
+        (ws // 2) // DINO_PATCH_SIZE * DINO_PATCH_SIZE for ws in window_size
+    )  # 50% overlap, multiple of 14
     fold = nn.Fold(
         output_size=(ph, pw),
         kernel_size=tuple(ws // DINO_PATCH_SIZE for ws in window_size),
         stride=tuple(s // DINO_PATCH_SIZE for s in stride),
-        dilation=dilation,
     )
     unfold = nn.Unfold(
         kernel_size=window_size,
         stride=stride,
-        dilation=dilation,
     )
     # divisor tensor for averaging overlapping patches
     divisor = torch.ones(1, 1, H, W).cuda()
@@ -141,12 +137,10 @@ def _dino_features(
         patch_features = model.forward_features(vec)[  # type: ignore
             "x_norm_patchtokens"
         ]  # B', ph * pw, C2
-        patch_features: torch.Tensor = patch_features.half()
-        all_features.append(patch_features)
+        all_features.append(patch_features.half())
     features = torch.cat(all_features, dim=0)  # B * L, ph * pw, C2
     features = _patch_to_folded(features, B, L)  # B, C2 * ph * pw, L
-    features = fold(features)  # B, C2, ph, pw
-    features /= divisor  # average overlapping patches
+    features = fold(features) / divisor  # B, C2, ph, pw
     features = features.permute([1, 0, 2, 3]).contiguous()  # C2, D, W, H
     features = features.cpu().numpy()
     return features
@@ -158,15 +152,8 @@ def _save_data(
     tomo_name: str,
     dst_dir: Path,
 ) -> None:
-    """Save extracted features to a specified directory, and copy the source tomogram file.
+    """Save extracted features to a specified directory as an .hdf file, copying the source tomogram data."""
 
-    Args:
-        data (dict[str, NDArray]): A dictionary containing tomogram data and labels.
-        features (NDArray[np.float16]): Extracted features to be saved.
-        tomo_name (str): The name of the tomogram file.
-        src_dir (Path): The source directory containing the original tomogram file.
-        dst_dir (Path): The destination directory where the tomogram and features are saved.
-    """
     dst_dir.mkdir(parents=True, exist_ok=True)
 
     with h5py.File(dst_dir / tomo_name, "w") as fh:
@@ -202,6 +189,7 @@ def _process_sample(
     image_dir: Path | None,
 ):
     """Process all tomograms in a single sample by extracting and saving their DINOv2 features."""
+
     tomo_dir = src_dir / sample
     result_dir = dst_dir / sample
     csv_file = csv_dir / f"{sample}.csv"
@@ -246,6 +234,17 @@ def run_dino(
     window_size: int | None = DEFAULT_WINDOW_SIZE,
     visualize: bool = False,
 ) -> None:
+    """Run DINO feature extraction on the specified training data, and saves the results as .hdf files.
+    The saved result file will contain `data`, `dino_features`, and any labels present in the source tomogram in the `labels/` group.
+
+    Args:
+        train_data (list[Path]): List of paths to the training tomograms.
+        result_dir (Path): Directory where the results will be saved.
+        batch_size (int): Number of samples to process in each batch.
+        window_size (Optional[int], optional): Size of the sliding window for feature extraction. If None, uses the default size.
+        visualize (bool, optional): Whether to visualize the extracted features. Defaults to False.
+    """
+
     ## Setup hydra config
     with initialize(
         version_base="1.2",
@@ -313,7 +312,12 @@ def run_dino(
 
 
 def run_trainer(cfg: DinoFeaturesConfig) -> None:
-    """Process all tomograms in a sample or samples by extracting and saving their DINOv2 features."""
+    """Sets up and executes the DINO feature computation using the specified configuration.
+
+    Args:
+        cfg (DinoFeaturesConfig): Configuration object containing all settings for the DINO feature computation.
+    """
+
     # Convert paths to Paths
     cfg.paths.model_dir = Path(cfg.paths.model_dir)
     cfg.paths.data_dir = Path(cfg.paths.data_dir)

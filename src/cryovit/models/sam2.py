@@ -1,4 +1,5 @@
-# """SAMv2 model for 2D/3D tomogram segmentation, using the existing library to support training and fine-tuning."""
+"""SAMv2 model for 2D/3D tomogram segmentation with a prompt predictor for automated segmentation. Code is based on the original SAM2 training code from https://github.com/facebookresearch/sam2/blob/main/training/model/sam2.py."""
+
 import logging
 from pathlib import Path
 from typing import Any, Literal
@@ -23,6 +24,7 @@ from cryovit.types import BatchedTomogramData
 if GlobalHydra.instance().is_initialized():
     GlobalHydra.instance().clear()
 
+## Pre-trained Model Weights ##
 sam2_model = (
     "facebook/sam2.1-hiera-tiny",
     {"config": "sam2.1_hiera_t.yaml", "weights": "sam2.1_hiera_tiny.pt"},
@@ -44,6 +46,7 @@ class SAM2(BaseModel):
         self, sam_model: "SAM2Train", custom_kwargs, **kwargs
     ) -> None:
         """Initializes the SAM2 model with specific convolutional and synthesis blocks."""
+
         super().__init__(**kwargs)
         self.prompt_lr = custom_kwargs.get("prompt_lr", 3e-05)
         if "prompt_lr" in custom_kwargs:
@@ -56,6 +59,7 @@ class SAM2(BaseModel):
 
     def freeze_parameters(self):
         """Freezes all model parameters except for the prompt predictor and mask decoder."""
+
         for p in self.model.image_encoder.parameters():
             p.requires_grad = False
         for p in self.model.sam_prompt_encoder.parameters():
@@ -66,7 +70,8 @@ class SAM2(BaseModel):
             p.requires_grad = False
 
     def configure_optimizers(self) -> Optimizer:
-        """Configures the optimizer with the initialization parameters."""
+        """Configures the optimizer with separate learning rates for the prompt predictor and mask decoder."""
+
         prompt_params = {
             "params": self.prompt_predictor.parameters(),
             "lr": self.prompt_lr,
@@ -81,9 +86,12 @@ class SAM2(BaseModel):
         )
 
     def _masked_predict(
-        self, batch: BatchedTomogramData, use_mito_mask: bool = False  # type: ignore
+        self,
+        batch: BatchedTomogramData,  # type: ignore
+        use_mito_mask: bool = False,
     ) -> dict[str, Tensor]:
         """Override trainer _masked_predict to handle masking for the prompt predictor."""
+
         out = self(batch)
         y_true = batch.labels  # (B, D, H, W)
         y_pred_full, mask_pred_full = out["preds"], out["prompts"]
@@ -110,8 +118,14 @@ class SAM2(BaseModel):
             "masks_full": mask_pred_full,
         }
 
-    def _do_step(self, batch: BatchedTomogramData, batch_idx: int, prefix: Literal["train", "val", "test"]) -> Tensor:  # type: ignore
+    def _do_step(
+        self,
+        batch: BatchedTomogramData,  # type: ignore
+        batch_idx: int,
+        prefix: Literal["train", "val", "test"],
+    ) -> Tensor:
         """Override trainer do_step to handle losses for the prompt predictor."""
+
         out_dict = self._masked_predict(batch)
 
         y_pred, y_true = out_dict["preds"], out_dict["labels"]
@@ -235,12 +249,14 @@ class SAM2(BaseModel):
         assign: bool = True,
     ) -> tuple:
         """Override load_state_dict to handle loading of SAM2 weights."""
+
         return self.model.load_state_dict(
             state_dict, strict=strict, assign=assign
         )
 
     def compile(self) -> None:
         """Compiles the model image encoder for training."""
+
         self.model.image_encoder.forward = torch.compile(
             self.model.image_encoder.forward
         )
@@ -264,7 +280,8 @@ class SAM2Train(SAM2Base):
         rand_init_cond_slices: tuple[bool, bool] = (True, False),
         **kwargs,
     ) -> None:
-        """Initializes the CryoVIT model with specific convolutional and synthesis blocks."""
+        """Initializes the SAM2 model with pre-trained blocks."""
+
         super().__init__(
             image_encoder, memory_attention, memory_encoder, **kwargs
         )
@@ -273,13 +290,17 @@ class SAM2Train(SAM2Base):
 
     def _apply_lora_to_mask_decoder(self):
         """Delay applying LoRA to the mask decoder until after loading weights."""
+
         decoder_factory = LoRAMaskDecoderFactory(
             lora_r=128, lora_alpha=128
         )  # Using alpha=r
         self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
-    def forward(self, data: BatchedTomogramData, box_prompts, mask_prompts) -> dict[str, Any] | Tensor:  # type: ignore
+    def forward(
+        self, data: BatchedTomogramData, box_prompts, mask_prompts  # type: ignore
+    ) -> dict[str, Any] | Tensor:
         """Forward pass for the SAMv2 model."""
+
         backbone_out = self.forward_image(data.flat_tomo_batch)
         mid_slice_idx = data.num_slices // 2
         backbone_out = self.prepare_prompt_inputs(
@@ -294,8 +315,16 @@ class SAM2Train(SAM2Base):
             out = torch.sigmoid(out)
         return out
 
-    def prepare_prompt_inputs(self, backbone_out: dict[str, Any], box_prompts: dict[str, Any], mask_prompts: dict[str, Any], data: BatchedTomogramData, start_slice_idx: int = 0) -> dict[str, Any]:  # type: ignore
+    def prepare_prompt_inputs(
+        self,
+        backbone_out: dict[str, Any],
+        box_prompts: dict[str, Any],
+        mask_prompts: dict[str, Any],
+        data: BatchedTomogramData,  # type: ignore
+        start_slice_idx: int = 0,
+    ) -> dict[str, Any]:
         """Prepare predicted masks."""
+
         backbone_out["num_slices"] = data.num_slices
         # Setup prompt parameters
         if self.training:
@@ -339,8 +368,14 @@ class SAM2Train(SAM2Base):
 
         return backbone_out
 
-    def forward_tracking(self, backbone_out: dict[str, Any], data: BatchedTomogramData, return_dict: bool = False) -> dict[str, Any] | Tensor:  # type: ignore
-        """Forward video tracking on each slice."""
+    def forward_tracking(
+        self,
+        backbone_out: dict[str, Any],
+        data: BatchedTomogramData,  # type: ignore
+        return_dict: bool = False,
+    ) -> dict[str, Any] | Tensor:
+        """Forward tracking on each slice."""
+
         # Prepare backbone features
         # backbone_out is [[BxD]xCxHxW]
         # vision_feats and vision_pos_embeds are [(HW), (BD), C]
@@ -425,6 +460,8 @@ class SAM2Train(SAM2Base):
         run_mem_encoder: bool = True,
         prev_sam_mask_logits: Any | None = None,
     ) -> dict[str, Any]:
+        """Process a single slice in the tomogram."""
+
         # Run the tracking step for the current slice
         current_out, sam_outputs, _, _ = self._track_step(
             frame_idx,
@@ -486,6 +523,8 @@ class SAM2Train(SAM2Base):
         track_in_reverse,
         prev_sam_mask_logits,
     ):
+        """Overrided _track_step to handle box and mask prompts."""
+
         current_out = {
             "point_inputs": None,
             "box_inputs": point_inputs,
@@ -550,7 +589,8 @@ class SAM2Train(SAM2Base):
         high_res_features=None,
         multimask_output=False,
     ):
-        """Forward SAM prompt encoders and mask heads."""
+        """Forward SAM prompt encoders and mask heads, overrided to use box and mask prompts."""
+
         B = backbone_features.size(0)
         device = backbone_features.device
         assert backbone_features.size(1) == self.sam_prompt_embed_dim
@@ -674,6 +714,8 @@ class SAM2Train(SAM2Base):
 
 
 def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
+    """Creates a SAM2 model from pre-trained weights specified in the config."""
+
     configs = _download_model_weights(sam_dir)
     assert (
         cfg.name in configs
@@ -715,6 +757,8 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
 
 
 def _download_model_weights(sam_dir: Path) -> dict[str, dict[str, Path]]:
+    """Downloads the SAMv2 and Medical-SAMv2 model weights if they do not exist using huggingface_hub."""
+
     # Download base SAMv2 model
     sam2_repo, sam2_config = sam2_model
     if not (
@@ -742,58 +786,3 @@ def _download_model_weights(sam_dir: Path) -> dict[str, dict[str, Path]]:
     medsam_config = {k: sam_dir / v for k, v in medsam_config.items()}
 
     return {"SAM2": sam2_config, "MedSAM": medsam_config}
-
-
-def _mask_to_box(masks: Tensor) -> Tensor:
-    """Converts a binary mask to bounding box coordinates."""
-    device = masks.device
-    B, _, H, W = masks.shape
-    xs = torch.arange(W, device=device, dtype=torch.int32)
-    ys = torch.arange(H, device=device, dtype=torch.int32)
-    grid_xs, grid_ys = torch.meshgrid(xs, ys, indexing="xy")
-    grid_xs = grid_xs.unsqueeze(0).unsqueeze(0).expand(B, 1, H, W)
-    grid_ys = grid_ys.unsqueeze(0).unsqueeze(0).expand(B, 1, H, W)
-    min_xs, _ = torch.min(torch.where(masks, grid_xs, W).flatten(-2), dim=-1)
-    max_xs, _ = torch.max(torch.where(masks, grid_xs, -1).flatten(-2), dim=-1)
-    min_ys, _ = torch.min(torch.where(masks, grid_ys, H).flatten(-2), dim=-1)
-    max_ys, _ = torch.max(torch.where(masks, grid_ys, -1).flatten(-2), dim=-1)
-    bbox_coords = torch.stack([min_xs, min_ys, max_xs, max_ys], dim=-1)
-    return bbox_coords
-
-
-def _sample_box_from_mask(
-    masks: Tensor,
-    noise: float = 0.1,
-    noise_bound: int | Tensor = 20,
-    top_left_label: int = 2,
-    bottom_right_label: int = 3,
-) -> tuple[Tensor, Tensor]:
-    """Samples a bounding box from a mask."""
-    device = masks.device
-    B, _, H, W = masks.shape
-    box_coords = _mask_to_box(masks)
-    box_labels = torch.tensor(
-        [top_left_label, bottom_right_label], device=device, dtype=torch.int
-    ).repeat(B)
-
-    if noise > 0.0:
-        if not isinstance(noise_bound, Tensor):
-            noise_bound = torch.tensor(noise_bound, device=device)
-        bbox_w = box_coords[..., 2] - box_coords[..., 0]
-        bbox_h = box_coords[..., 3] - box_coords[..., 1]
-        max_dx = torch.min(bbox_w * noise, noise_bound)
-        max_dy = torch.min(bbox_h * noise, noise_bound)
-        box_noise = 2 * torch.rand((B, 1, 4), device=device) - 1
-        box_noise = box_noise * torch.stack(
-            (max_dx, max_dy, max_dx, max_dy), dim=-1
-        )
-
-        box_coords = box_coords + box_noise
-        img_bounds = torch.tensor([W, H, W, H], device=device) - 1
-        box_coords = torch.clamp(
-            box_coords, min=torch.zeros_like(img_bounds), max=img_bounds
-        )
-
-    box_coords = box_coords.reshape(-1, 2, 2)  # (B, 2, 2)
-    box_labels = box_labels.reshape(-1, 2)  # (B, 2)
-    return box_coords, box_labels

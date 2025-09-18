@@ -16,11 +16,16 @@ class DiceMetric(Metric):
         Args:
             threshold (float): The threshold to apply to the predictions during Dice score calculation.
         """
+
         super().__init__()
         self.name = "DiceMetric"
         self.thresh = threshold
-        self.add_state("dice_score", default=torch.tensor(0.0), dist_reduce_fx="sum")
-        self.add_state("total", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state(
+            "dice_score", default=torch.tensor(0.0), dist_reduce_fx="sum"
+        )
+        self.add_state(
+            "total", default=torch.tensor(0.0), dist_reduce_fx="sum"
+        )
 
     def update(self, y_pred: Tensor, y_true: Tensor) -> None:
         """Updates the states for the Dice score computation based on predictions and actual values.
@@ -29,6 +34,7 @@ class DiceMetric(Metric):
             y_pred (Tensor): Predicted probabilities or logits from the model.
             y_true (Tensor): Ground truth labels.
         """
+
         y_pred = torch.where(y_pred < self.thresh, 0.0, 1.0)
 
         intersection = torch.sum(y_true * y_pred)
@@ -43,4 +49,5 @@ class DiceMetric(Metric):
         Returns:
             Tensor: The average Dice score across all batches.
         """
-        return self.dice_score / self.total if self.total > 0 else torch.tensor(0.0) # type: ignore
+
+        return self.dice_score / self.total if self.total > 0 else torch.tensor(0.0)  # type: ignore

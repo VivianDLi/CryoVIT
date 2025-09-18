@@ -1,4 +1,4 @@
-"""Config file for CryoVIT experiments."""
+"""Defines and checks valid configurations for CryoViT experiments."""
 
 import logging
 import sys
@@ -15,11 +15,12 @@ samples: list[str] = [sample.name for sample in Sample]
 tomogram_exts: list[str] = [".hdf", ".mrc"]
 
 DINO_PATCH_SIZE = 14
+DEFAULT_WINDOW_SIZE = 630
 
 
 @dataclass
 class BaseModel:
-    """Base class for model configurations used in CryoVIT experiments.
+    """Base configuration for models used in CryoViT experiments.
 
     Attributes:
         name (str): Name of the model for identification purposes.
@@ -27,9 +28,9 @@ class BaseModel:
         model_dir (Optional[Path]): Optional directory to download model weights to (for SAMv2 models).
         lr (float): Learning rate for the model training.
         weight_decay (float): Weight decay (L2 penalty) rate. Default is 1e-3.
-        losses (tuple[dict]): Configuration for loss functions used in training.
-        metrics (tuple[dict]): Configuration for metrics used during model evaluation.
-        custom_kwargs (InitVar[dict]): Optional dictionary of custom keyword arguments to pass to the model.
+        losses (dict[str, Any]): Configurations for loss functions used in training.
+        metrics (dict[str, Any]): Configurations for metrics used during model evaluation.
+        custom_kwargs (Optional[dict[str, Any]]): Optional dictionary of custom keyword arguments to pass to the model.
     """
 
     _target_: str = MISSING
@@ -44,28 +45,19 @@ class BaseModel:
 
     custom_kwargs: dict | None = None
 
-    def __post_init__(self) -> None:
-        if self.custom_kwargs is not None:
-            for key, value in self.custom_kwargs.items():
-                setattr(self, key, value)
-
-        delattr(
-            self, "custom_kwargs"
-        )  # Remove custom_kwargs from the dataclass after initialization
-
 
 @dataclass
 class BaseTrainer:
-    """Base class for trainer configurations used in CryoVIT experiments.
+    """Base configuration for the trainer used in CryoViT experiments.
 
     Attributes:
-        accelerator (str): Type of hardware acceleration ('gpu' for this configuration).
-        devices (str): Number of devices to use for training.
+        accelerator (str): Type of hardware acceleration. Default is 'gpu'.
+        devices (str): Number of devices to use for training. Default is '1'.
         precision (str): Precision configuration for training (e.g., '16-mixed').
-        default_root_dir (Path): Default root directory for saving checkpoints and logs.
+        default_root_dir (Optional[Path]): Default root directory for saving checkpoints and logs.
         max_epochs (Optional[int]): The maximum number of epochs to train for.
-        enable_checkpointing (bool): Flag to enable or disable model checkpointing.
-        enable_model_summary (bool): Enable model summarization.
+        enable_checkpointing (bool): Flag to enable or disable model checkpointing. Default is False.
+        enable_model_summary (bool): Enable model summarization. Default is True.
         log_every_n_steps (Optional[int]): Frequency of logging in terms of training steps.
     """
 
@@ -83,14 +75,15 @@ class BaseTrainer:
 
 @dataclass
 class BaseDataModule:
-    """Base class for dataset configurations in CryoVIT experiments.
+    """Base configuration for datasets in CryoViT experiments.
 
     Attributes:
         sample (Union[Sample, tuple[Sample]]): Specific sample or samples used for training.
         split_id (Optional[int]): Optional split_id to use for validation.
+        split_key (Optional[str]): Key in the sample .csv file to use for splitting the data. Default is "split_id".
         test_sample (Optional[Any]): Specific sample or samples used for testing.
-        dataset (dict): Configuration options for the dataset.
-        dataloader (dict): Configuration options for the dataloader.
+        dataset (dict[str, Any]): Configuration for the dataset.
+        dataloader (dict[str, Any]): Configuration for the dataloader.
     """
 
     _target_: str = ""
@@ -108,18 +101,18 @@ class BaseDataModule:
 
 @dataclass
 class ExperimentPaths:
-    """Configuration for managing experiment paths in CryoVIT experiments.
+    """Configuration for managing experiment paths in CryoViT experiments.
 
     Attributes:
-        model_dir (Path): Directory path for downloaded models.
-        data_dir (Path): Directory path for tomogram data and .csv files.
-        exp_dir (Path): Directory path for saving results from an experiment.
-        results_dir (Path): Directory path for saving overall results.
-        tomo_name (str): Name of the directory in data_dir with tomograms.
-        feature_name (str): Name of the directory in data_dir with DINOv2 features.
-        dino_name (str): Name of the directory in model_dir to save DINOv2 model.
-        csv_name (str): Name of the directory in data_dir with .csv files.
-        split_name(str): Name of the .csv file with training splits.
+        model_dir (Path): Path to the folder containing downloaded models.
+        data_dir (Path): Path to the parent directory containing tomogram data and .csv files.
+        exp_dir (Path): Path to the parent directory for saving results from an experiment.
+        results_dir (Path): Path to the parent directory for saving overall results.
+        tomo_name (str): Name of the folder in data_dir with tomograms.
+        feature_name (str): Name of the folder in data_dir with DINOv2 features.
+        dino_name (str): Name of the folder in model_dir to save DINOv2 model.
+        csv_name (str): Name of the folder in data_dir with .csv files.
+        split_name (str): Name of the .csv file with training splits.
     """
 
     model_dir: Path = MISSING
@@ -137,16 +130,15 @@ class ExperimentPaths:
 
 @dataclass
 class DinoFeaturesConfig:
-    """Configuration for managing DINOv2 features within CryoVIT experiments.
+    """Base configuration for computing DINOv2 features in CryoViT experiments.
 
     Attributes:
-        batch_size (int): Number of tomogram slices to process as one batch.
+        batch_size (int): Number of tomogram slices to process as one batch. Default is 128.
         dino_dir (Path): Path to the DINOv2 foundation model.
-        envs (Path): Path to the directory containing tomograms.
-        csv_dir (Optional[Path]): Path to the directory containing .csv files.
-        feature_dir (Path): Destination to save the generated DINOv2 features.
+        paths (ExperimentPaths): Configuration for experiment paths.
+        datamodule (dict[str, Any]): Configuration for the datamodule to use for loading tomograms.
         sample (Optional[Sample]): Sample to calculate features for. None means to calculate features for all samples.
-        export_features (bool): Whether to additionally save calculated features as PCA color-maps for investigation.
+        export_features (bool): Whether to additionally compute PCA colormaps for the calculated features.
     """
 
     batch_size: int = 128
@@ -159,19 +151,21 @@ class DinoFeaturesConfig:
 
 @dataclass
 class BaseExperimentConfig:
-    """Base configuration for running experiment scripts.
+    """Base configuration for running CryoViT experiments.
 
     Attributes:
-        name (str): Name of the experiment, must be unique for each configuration.
-        label_key (str): Key used to specify the training label.
-        additional_keys (tuple[str]): Additional keys to load auxiliary data from tomograms.
-        random_seed (int): Random seed set for reproducibility.
-        paths (ExperimentPaths): Configuration paths relevant to the experiment.
-        model (BaseModel): Model configuration to use for the experiment.
-        trainer (BaseTrainer): Trainer configuration to use for the experiment.
-        callbacks (Optional[list]): list of callback functions for training sessions.
-        logger (Optional[list]): list of logging functions for training sessions.
-        dataset (BaseDataset): Dataset configuration to use for the experiment.
+        name (str): Name of the experiment, should be unique for each configuration.
+        label_key (str): Key used to specify the training labels.
+        additional_keys (tuple[str]): Keys to pass through additional data from the dataset.
+        random_seed (int): Random seed set for reproducibility. Default is 42.
+        paths (ExperimentPaths): Configuration for experiment paths.
+        model (BaseModel): Configuration for the model to use.
+        trainer (BaseTrainer): Configuration for the trainer to use.
+        callbacks (Optional[list]): List of callback functions for the trainer.
+        logger (Optional[list]): List of logging functions for the trainer.
+        datamodule (BaseDataModule): Configuration for the datamodule to use.
+        ckpt_path (Optional[Path]): Optional path to a checkpoint file to resume training from.
+        resume_ckpt (bool): Whether to resume training from the checkpoint. Default is False.
     """
 
     name: str = MISSING
@@ -233,9 +227,10 @@ def validate_dino_config(cfg: DinoFeaturesConfig) -> None:
 def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
     """Validates an experiment configuration.
 
-    Checks if all necessary parameters are present in the configuration. Logs an error and exits if any required parameters are missing.
+    Checks if all necessary parameters are present in the configuration. If any required parameters are
+    missing, it logs an error message and exits the script.
 
-    Also checks that all Samples specified are valid, and logs an error and exits if any samples are not valid.
+    Additionally, checks that all Samples specified are valid, and logs an error and exits if any samples are not valid.
 
     Args:
         cfg (BaseExperimentConfig): The configuration object to validate.

@@ -68,6 +68,7 @@ def export_pca(
     frame_id: int | None = None,
 ) -> None:
     """Extract PCA colormap from features and save to a specified directory."""
+
     from PIL import Image
 
     # Save as Images
@@ -86,6 +87,8 @@ def export_pca(
         np_features = _calculate_pca(np_features)
         np_features = _color_features(np_features)
 
+        data = data - data.min()
+        data = data / data.max()
         int_data = (data * 255.0).astype(np.uint8)
         f_img = Image.fromarray(np_features[0][::-1])
         d_img = Image.fromarray(int_data[idx][::-1])
@@ -100,6 +103,8 @@ def export_pca(
 
 
 def process_samples(exp_dir: Path, result_dir: Path):
+    """Process all samples in an experiment directory and save PCA visualizations."""
+
     result_dir.mkdir(parents=True, exist_ok=True)
     samples = [s.name for s in exp_dir.iterdir() if s.is_dir()]
     logging.info(

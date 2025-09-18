@@ -29,10 +29,8 @@ def main(cfg: BaseExperimentConfig) -> None:
 
     Args:
         cfg (EvalModelConfig): Configuration object loaded from eval_model.yaml.
-
-    Raises:
-        BaseException: Captures and logs any exceptions that occur during the evaluation of the model.
     """
+
     validate_experiment_config(cfg)
 
     try:

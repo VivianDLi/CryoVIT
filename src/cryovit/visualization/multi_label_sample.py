@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from cryovit.types import Sample
 from cryovit.visualization.utils import (
     compute_stats,
     merge_experiments,
@@ -13,22 +12,13 @@ from cryovit.visualization.utils import (
 )
 
 
-def plot_df(
+def _plot_df(
     df: pd.DataFrame,
     pvalues: pd.Series,
     key: str,
     title: str,
     file_name: str,
 ):
-    """Plot DataFrame results with box and strip plots including annotations for statistical tests.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing the data to plot.
-        pvalues (dict[str, pd.Series]): dictionary containing p-values for annotations for each model.
-        key (str): The column name used to group data points in the plot.
-        title (str): The title of the plot.
-        file_name (str): Base file name for saving the plot images.
-    """
     import matplotlib
     import matplotlib.pyplot as plt
     import seaborn as sns
@@ -41,23 +31,21 @@ def plot_df(
     hue_palette = {
         "3D U-Net": colors[0],
         "CryoViT": colors[1],
-        "CryoViT with Sparse Labels": colors[1],
-        "CryoViT with Dense Labels": colors[2],
     }
 
-    sample_counts = df["sample"].value_counts()
+    label_counts = df["label"].value_counts()
     num_models = df[key].nunique()
-    n_samples = df["sample"].nunique()
-    sorted_samples = sample_counts.sort_values(ascending=True).index.tolist()
+    n_samples = df["label"].nunique()
+    sorted_labels = label_counts.sort_values(ascending=True).index.tolist()
     fig = plt.figure(figsize=(12 if n_samples > 6 else 6, 6))
     ax = plt.gca()
 
     params = {
-        "x": "sample",
+        "x": "label",
         "y": "dice_metric",
         "hue": key,
         "data": df,
-        "order": sorted_samples,
+        "order": sorted_labels,
     }
 
     sns.boxplot(
@@ -82,11 +70,18 @@ def plot_df(
 
     annotator = Annotator(ax, pairs, **params)
     annotator.configure(color="blue", line_width=1, verbose=False)
-    annotator.set_pvalues_and_annotate(pvalues[k2].values)
+    annotator.set_pvalues_and_annotate(pvalues.values)
 
     current_labels = ax.get_xticklabels()
+    full_labels = {
+        "mito": "Mitochondria",
+        "cristae": "Cristae",
+        "microtubule": "Microtubules",
+        "granule": "Granules",
+        "bacteria": "Bacteria",
+    }
     new_labels = [
-        f"{Sample[label.get_text()].value}\n(n={sample_counts[label.get_text()] // num_models})"
+        f"{full_labels[label.get_text()]}\n(n={label_counts[label.get_text()] // num_models})"
         for label in current_labels
     ]
 
@@ -110,13 +105,21 @@ def plot_df(
 
 def process_multi_label_experiment(
     exp_type: str,
-    label: str,
     exp_names: dict[str, list[str]],
     exp_dir: Path,
     result_dir: Path,
 ):
+    """Plot DataFrame results with box and strip plots including annotations for statistical tests.
+
+    Args:
+        exp_type (str): Type of experiment, i.e., "multi_label"
+        exp_names (dict[str, list[str]]): Dictionary mapping experiment names to model used and label
+        exp_dir (Path): Directory containing the experiment results
+        result_dir (Path): Directory to save the results
+    """
+
     result_dir.mkdir(parents=True, exist_ok=True)
-    df = merge_experiments(exp_dir, exp_names, keys=["model"])
+    df = merge_experiments(exp_dir, exp_names, keys=["model", "label"])
     test_fn = functools.partial(
         significance_test,
         model_A=("CryoViT"),
@@ -126,15 +129,15 @@ def process_multi_label_experiment(
     )
     p_values = compute_stats(
         df,
-        group_keys=["model"],
-        file_name=str(result_dir / f"{label}_{exp_type}_stats.csv"),
+        group_keys=["label", "model"],
+        file_name=str(result_dir / f"{exp_type}_stats.csv"),
         test_fn=test_fn,
     )
 
-    plot_df(
+    _plot_df(
         df,
         p_values,
         "model",
-        f"Model Comparison on Individual {label.upper()} Samples for {exp_type.capitalize()}",
-        str(result_dir / f"{label}_{exp_type}_comparison"),
+        "Model Comparison on All Samples for each Label",
+        str(result_dir / f"{exp_type}_comparison"),
     )

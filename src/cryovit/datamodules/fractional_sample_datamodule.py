@@ -24,6 +24,7 @@ class FractionalSampleDataModule(BaseDataModule):
             split_key (str): The key used to select splits using split_id.
             test_sample (Optional[list[str]]): The sample to exclude from training and use for testing.
         """
+
         super().__init__(**kwargs)
         # Validity checks
         assert (
@@ -44,6 +45,7 @@ class FractionalSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the train tomograms.
         """
+
         assert self.record_df is not None
         if self.split_id is not None:
             training_splits = list(range(self.split_id))
@@ -57,12 +59,22 @@ class FractionalSampleDataModule(BaseDataModule):
         ][["sample", "tomo_name"]]
 
     def val_df(self) -> pd.DataFrame:
-        """Validation tomograms: validate on the train tomograms. Not really useful.
+        """Validation tomograms: validate on tomograms from the held out sample.
 
         Returns:
             pd.DataFrame: A dataframe specifying the validation tomograms.
         """
-        return self.train_df()  # validate on train set
+
+        assert self.record_df is not None
+        if self.split_id is not None:
+            training_splits = list(range(self.split_id))
+        else:
+            training_splits = list(range(self.record_df[self.split_key].max()))
+
+        return self.record_df[
+            (self.record_df[self.split_key].isin(training_splits))
+            & (self.record_df["sample"].isin(self.test_sample))
+        ][["sample", "tomo_name"]]
 
     def test_df(self) -> pd.DataFrame:
         """Test tomograms: test on tomograms from the held out sample.
@@ -70,12 +82,16 @@ class FractionalSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
-        assert self.record_df is not None
-        return self.record_df[self.record_df["sample"].isin(self.test_sample)][
-            ["sample", "tomo_name"]
-        ]
+
+        return self.val_df()
 
     def predict_df(self) -> pd.DataFrame:
+        """Predict tomograms: predict on the specified samples.
+
+        Returns:
+            pd.DataFrame: A dataframe specifying the predict tomograms.
+        """
+
         assert self.record_df is not None
         return self.record_df[self.record_df["sample"].isin(self.sample)][
             ["sample", "tomo_name"]

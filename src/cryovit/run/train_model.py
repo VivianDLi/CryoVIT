@@ -34,6 +34,25 @@ def run_training(
     num_epochs: int = 50,
     log_training: bool = False,
 ) -> Path:
+    """Run training on the specified data and labels.
+
+    Args:
+        train_data (list[Path]): List of paths to the training tomograms.
+        train_labels (list[Path]): List of paths to the training labels.
+        labels (list[str]): List of label names to train on.
+        model_type (ModelType): Type of the model to train.
+        model_name (str): Name of the model.
+        label_key (str): Key for the label in the dataset.
+        result_dir (Path): Directory where the training results will be saved.
+        val_data (Optional[list[Path]], optional): List of paths to the validation tomograms. Defaults to None.
+        val_labels (Optional[list[Path]], optional): List of paths to the validation labels. Defaults to None.
+        num_epochs (int, optional): Number of training epochs. Defaults to 50.
+        log_training (bool, optional): Whether to log training metrics to Tensorboard. Defaults to False.
+
+    Returns:
+        Path: Path to the saved model file.
+    """
+
     ## Setup hydra config
     with initialize(
         version_base="1.2",
@@ -77,8 +96,12 @@ def run_training(
     if log_training:
         # tensorboard logger to avoid wandb account issues
         loggers.append(TensorBoardLogger(save_dir=result_dir, name=model_name))
+        logging.info(
+            "Setup TensorBoard logger. View logs with `tensorboard --logdir %s`",
+            result_dir / model_name,
+        )
     trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=loggers)
-    if cfg.model._target_ == "cryovit.models.SAM2":
+    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
         # Load SAM2 pre-trained models
         model = create_sam_model_from_weights(
             cfg.model, cfg.paths.model_dir / cfg.paths.sam_name
@@ -88,7 +111,7 @@ def run_training(
     logging.info("Loaded model.")
 
     # Base SAM2 only supports image encoder compilation
-    if cfg.model._target_ == "cryovit.models.SAM2":
+    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
         logging.info("Compiling image encoder for SAM2 model.")
         try:
             model.compile()
@@ -114,6 +137,7 @@ def run_training(
 
 
 def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
+    """Setup the experiment directory structure and optionally, the W&B logger."""
     # Convert paths to Paths
     cfg.paths.model_dir = Path(cfg.paths.model_dir)
     cfg.paths.data_dir = Path(cfg.paths.data_dir)
@@ -137,7 +161,11 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     new_exp_dir.mkdir(parents=True, exist_ok=True)
     if cfg.datamodule.split_id is not None:
         new_exp_dir = new_exp_dir / f"split_{cfg.datamodule.split_id}"
-    if test_sample is not None:
+    if (
+        cfg.datamodule._target_
+        == "cryovit.datamodules.FractionalSampleDataModule"
+        and test_sample is not None
+    ):
         new_exp_dir = new_exp_dir / f"{test_sample}"
 
     new_exp_dir.mkdir(parents=True, exist_ok=True)
@@ -161,6 +189,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     Args:
         cfg (TrainModelConfig): Configuration object containing all settings for the training process.
     """
+
     seed_everything(cfg.random_seed, workers=True)
 
     # Setup experiment directories
@@ -190,7 +219,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
         cfg.trainer, callbacks=callbacks, logger=loggers
     )
     logging.info("Setup trainer.")
-    if cfg.model._target_ == "cryovit.models.SAM2":
+    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
         # Load SAM2 pre-trained models
         model = create_sam_model_from_weights(
             cfg.model, cfg.paths.model_dir / cfg.paths.sam_name
@@ -228,7 +257,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
             "ckpt_path": cfg.ckpt_path,
             "seed": cfg.random_seed,
         }
-        if cfg.model._target_ == "cryovit.models.SAM2":
+        if cfg.model._target_ == "cryovit.models.sam2.SAM2":
             hparams["prompt_lr"] = (
                 cfg.model.custom_kwargs.get("prompt_lr", None)
                 if cfg.model.custom_kwargs
@@ -238,7 +267,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
             lg.log_hyperparams(hparams)
 
     # Base SAM2 only supports image encoder compilation
-    if cfg.model._target_ == "cryovit.models.SAM2":
+    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
         logging.info("Compiling image encoder for SAM2 model.")
         try:
             model.compile()

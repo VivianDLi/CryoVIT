@@ -27,6 +27,7 @@ class VITDataset(Dataset):
             root (Path): Root directory where tomogram files are stored.
             records (list[str]): A list of strings representing paths to tomogram files in the root directory.
         """
+
         self.root = (
             data_root if isinstance(data_root, Path) else Path(data_root)
         )
@@ -36,6 +37,7 @@ class VITDataset(Dataset):
 
     def __len__(self) -> int:
         """Returns the number of tomograms in the dataset."""
+
         return len(self.records)
 
     def __getitem__(self, idx: int) -> torch.Tensor:
@@ -50,6 +52,7 @@ class VITDataset(Dataset):
         Raises:
             IndexError: If the index is out of the dataset's bounds.
         """
+
         if idx >= len(self):
             raise IndexError
 
@@ -57,8 +60,8 @@ class VITDataset(Dataset):
         data = self._load_tomogram(record)
         return self._transform(data)
 
-    def _load_tomogram(self, record: str) -> NDArray[np.uint8]:
-        """Loads a tomogram from disk.
+    def _load_tomogram(self, record: str) -> NDArray[np.float32]:
+        """Loads a tomogram from disk, assuming it is stored as an .hdf file in a `data` key.
 
         Args:
             record (str): The file path to the tomogram relative to the root directory.
@@ -66,20 +69,26 @@ class VITDataset(Dataset):
         Returns:
             NDArray[np.uint8]: The loaded tomogram as a numpy array.
         """
+
         tomo_path = self.root / record
 
         with h5py.File(tomo_path) as fh:
-            return fh["data"][()]  # type: ignore
+            data: np.ndarray = fh["data"][()]  # type: ignore
 
-    def _transform(self, data: NDArray[np.uint8]) -> torch.Tensor:
+        if data.dtype == np.uint8:
+            data = data.astype(np.float32) / 255.0
+        return data
+
+    def _transform(self, data: NDArray[np.float32]) -> torch.Tensor:
         """Applies normalization and resizing transformations to the tomogram.
 
         Args:
-            data (NDArray[np.uint8]): The loaded tomogram data as a numpy array.
+            data (NDArray[np.float32]): The loaded tomogram data as a numpy array.
 
         Returns:
             torch.Tensor: The transformed data as a PyTorch tensor.
         """
+
         scale = (DINO_PATCH_SIZE / 16, DINO_PATCH_SIZE / 16)
         _, h, w = data.shape
         # Resize height and width to be multiples of 16
@@ -102,6 +111,5 @@ class VITDataset(Dataset):
 
         torch_data = torch.from_numpy(
             np_data
-        ).float()  # data expected to be uint8, [0-255]
-        torch_data = self.transform(torch_data / 255.0)
+        ).float()  # data expected to be float already, [0-1]
         return F.interpolate(torch_data, scale_factor=scale, mode="bicubic")

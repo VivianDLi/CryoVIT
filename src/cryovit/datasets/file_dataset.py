@@ -1,4 +1,4 @@
-"""Dataset class for loading DINOv2 features and labels for CryoVIT user models."""
+"""Dataset class for loading tomograms for CryoViT scripts."""
 
 import logging
 from typing import Any
@@ -28,31 +28,31 @@ class FileDataset(Dataset):
         input_key: str | None,
         label_key: str | None,
         train: bool = False,
-        predict: bool = False,
         for_dino: bool = False,
     ) -> None:
         """Creates a new FileDataset object.
 
         Args:
-            records (pd.DataFrame): A DataFrame containing records of tomograms.
-            input_key (str): The key in the HDF5 file to access input features.
-            label_key (str): The key in the HDF5 file to access labels.
-            data_root (Path): The root directory where the tomograms are stored.
+            files (list[FileData]): A list of FileData objects containing file paths and metadata.
+            input_key (Optional[str]): The key in a HDF5 file to access input features.
+            label_key (Optional[str]): The key in a HDF5 file to access labels.
             train (bool): Flag to determine if the dataset is for training (enables transformations).
-            aux_keys (list[str]): Additional keys for auxiliary data to load from the HDF5 files.
+            for_dino (bool): Flag to determine if the dataset is for DINO feature extraction (enables DINO transformations).
         """
+
         self.files = files
         self.input_key = input_key
         self.label_key = label_key
         self.train = train
-        self.predict = predict
         self.for_dino = for_dino
+
         self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
         self._key_cache = {}
         self._printed_resize_warning = False
 
     def __len__(self) -> int:
         """Returns the total number of tomograms in the dataset."""
+
         return len(self.files)
 
     def __getitem__(self, idx: int) -> TomogramData:  # type: ignore
@@ -62,11 +62,12 @@ class FileDataset(Dataset):
             idx (int): The index of the item.
 
         Returns:
-            record (dict[str, Any]): A dictionary containing the loaded data and labels.
+            TomogramData: A dataclass containing the loaded data, labels, and metadata.
 
         Raises:
             IndexError: If index is out of the range of the dataset.
         """
+
         if idx >= len(self):
             raise IndexError
 
@@ -108,14 +109,15 @@ class FileDataset(Dataset):
         )  # type: ignore
 
     def _load_tomogram(self, file_data: FileData) -> dict[str, Any]:
-        """Loads a single tomogram based on the record information.
+        """Loads a single tomogram based on the file information.
 
         Args:
-            record (pd.Series): A series containing the sample and tomogram names.
+            file_data (FileData): An object containing the file paths and metadata.
 
         Returns:
             data (dict[str, Any]): A dictionary with input data, label, and any auxiliary data.
         """
+
         tomo_path = file_data.tomo_path
         label_path = file_data.label_path
 
@@ -150,8 +152,9 @@ class FileDataset(Dataset):
         """Applies a random crop to the input data in the record dictionary.
 
         Args:
-            record (dict[str, Any]): The record dictionary containing 'input' and 'label' data.
+            data (dict[str, Any]): The record dictionary containing 'input' and 'label' data.
         """
+
         max_depth = 128
         side = 32 if self.input_key == "dino_features" else 512
         d, h, w = data["input"].shape[-3:]
@@ -177,15 +180,16 @@ class FileDataset(Dataset):
 
         data["label"] = data["label"][di : di + x, hi : hi + y, wi : wi + z]
 
-    def _dino_transform(self, data: NDArray[np.uint8]) -> torch.Tensor:
+    def _dino_transform(self, data: NDArray[np.float32]) -> torch.Tensor:
         """Applies normalization and resizing transformations to the tomogram.
 
         Args:
-            data (NDArray[np.uint8]): The loaded tomogram data as a numpy array.
+            data (NDArray[np.float32]): The loaded tomogram data as a numpy array.
 
         Returns:
             torch.Tensor: The transformed data as a PyTorch tensor.
         """
+
         scale = (DINO_PATCH_SIZE / 16, DINO_PATCH_SIZE / 16)
         h, w = data.shape[-2:]
         # Resize height and width to be multiples of 16
@@ -217,6 +221,4 @@ class FileDataset(Dataset):
         torch_data: torch.Tensor = F.interpolate(
             torch_data, scale_factor=scale, mode="bicubic"
         )
-        return torch_data.to(
-            torch.float16
-        )  # Use half precision to save memory
+        return torch_data

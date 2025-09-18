@@ -29,10 +29,8 @@ def main(cfg: BaseExperimentConfig) -> None:
 
     Args:
         cfg (TrainModelConfig): Configuration object loaded from train_model.yaml.
-
-    Raises:
-        BaseException: Captures and logs any exceptions that occur during the training process.
     """
+
     validate_experiment_config(cfg)
     result = 0
     try:

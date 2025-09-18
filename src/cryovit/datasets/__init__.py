@@ -1,4 +1,4 @@
-"""Datasets for CryoVIT experiments."""
+"""CryoViT Datasets."""
 
 from cryovit.datasets.file_dataset import FileDataset
 from cryovit.datasets.tomo_dataset import TomoDataset

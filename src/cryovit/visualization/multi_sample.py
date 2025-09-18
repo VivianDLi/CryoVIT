@@ -22,21 +22,13 @@ group_names = {
 }
 
 
-def plot_df(
+def _plot_df(
     df: pd.DataFrame,
     pvalues: pd.Series,
     key: str,
     title: str,
     ax,
 ):
-    """Plot DataFrame results with box and strip plots including annotations for statistical tests.
-
-    Args:
-        df (pd.DataFrame): DataFrame containing the data to plot.
-        pvalues (pd.Series): Series containing p-values for annotations.
-        title (str): The title of the plot.
-        ax (Axes): Axes object for plotting the figure.
-    """
     import matplotlib
     import seaborn as sns
     from statannotations.Annotator import Annotator
@@ -85,7 +77,7 @@ def plot_df(
 
     annotator = Annotator(ax, pairs, **params)
     annotator.configure(color="blue", line_width=1, verbose=False)
-    annotator.set_pvalues_and_annotate(pvalues[k2].values)
+    annotator.set_pvalues_and_annotate(pvalues.values)
 
     current_labels = ax.get_xticklabels()
     new_labels = [
@@ -111,6 +103,16 @@ def process_multi_experiment(
     exp_dir: Path,
     result_dir: Path,
 ):
+    """Plot domain-shift results with box and strip plots including annotations for statistical tests.
+
+    Args:
+        exp_type (str): Type of experiment, i.e., "multi"
+        exp_group (tuple[str, str]): Tuple containing the names of the two experiment groups to compare
+        exp_names (dict[str, list[str]]): Dictionary mapping experiment group names to a model and comparison direction, e.g., "forward" or "backward"
+        exp_dir (Path): Directory containing the experiment results
+        result_dir (Path): Directory to save the results
+    """
+
     import matplotlib.pyplot as plt
     from matplotlib.gridspec import GridSpec
 
@@ -147,7 +149,7 @@ def process_multi_experiment(
         test_fn=test_fn,
     )
     title = f"{group_names[exp_group[0]]} to {group_names[exp_group[1]]} Shift"
-    plot_df(forward_df, p_values, "model", title, ax1)
+    _plot_df(forward_df, p_values, "model", title, ax1)
 
     # Plot backward comparison (s2 vs. s1)
     test_fn = functools.partial(
@@ -167,7 +169,7 @@ def process_multi_experiment(
         test_fn=test_fn,
     )
     title = f"{group_names[exp_group[1]]} to {group_names[exp_group[0]]} Shift"
-    plot_df(backward_df, p_values, "model", title, ax2)
+    _plot_df(backward_df, p_values, "model", title, ax2)
 
     # Adjust layout and save the figure
     fig.suptitle(

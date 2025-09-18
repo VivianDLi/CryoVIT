@@ -26,6 +26,20 @@ def run_evaluation(
     result_dir: Path,
     visualize: bool = True,
 ) -> Path:
+    """Run evaluation on the specified test data and labels, saving result metrics as a .csv file.
+
+    Args:
+        test_data (list[Path]): List of paths to the test tomograms.
+        test_labels (list[Path]): List of paths to the test labels.
+        labels (list[str]): List of label names to evaluate.
+        model_path (Path): Path to the trained model file.
+        result_dir (Path): Directory where the evaluation results will be saved.
+        visualize (bool, optional): Whether to visualize the evaluation results. Defaults to True.
+
+    Returns:
+        Path: Path to the evaluation results file.
+    """
+
     ## Get model information
     model, model_type, model_name, label_key = load_model(model_path)
     ## Setup hydra config
@@ -40,7 +54,7 @@ def run_evaluation(
                 f"name={model_name}",
                 f"label_key={label_key}",
                 f"model={model_type.value}",
-                "'additional_keys=[data]'",
+                "additional_keys=[data]",
                 "datamodule=file",
             ],
         )
@@ -87,6 +101,8 @@ def run_evaluation(
 
 
 def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
+    """Setup the experiment directory structure."""
+
     # Convert paths to Paths
     cfg.paths.model_dir = Path(cfg.paths.model_dir)
     cfg.paths.data_dir = Path(cfg.paths.data_dir)
@@ -109,7 +125,12 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     new_exp_dir = cfg.paths.exp_dir / cfg.name / sample
     if cfg.datamodule.split_id is not None:
         new_exp_dir = new_exp_dir / f"split_{cfg.datamodule.split_id}"
-    if test_sample is not None:
+    # Append test sample only for fractional sample experiments (test sample is separated for validation)
+    if (
+        cfg.datamodule._target_
+        == "cryovit.datamodules.FractionalSampleDataModule"
+        and test_sample is not None
+    ):
         new_exp_dir = new_exp_dir / f"{test_sample}"
 
     cfg.paths.results_dir.mkdir(parents=True, exist_ok=True)
@@ -129,6 +150,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
     Args:
         cfg (EvalModelConfig): Configuration object containing all settings for the evaluation process.
     """
+
     seed_everything(cfg.random_seed, workers=True)
 
     # Setup experiment directories
@@ -155,7 +177,7 @@ def run_trainer(cfg: BaseExperimentConfig) -> None:
         cfg.trainer, callbacks=callbacks, logger=loggers
     )
     logging.info("Setup trainer.")
-    if cfg.model._target_ == "cryovit.models.SAM2":
+    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
         # Load SAM2 pre-trained models
         model = create_sam_model_from_weights(
             cfg.model, cfg.paths.model_dir / cfg.paths.sam_name

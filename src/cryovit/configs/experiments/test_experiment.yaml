@@ -1,0 +1,18 @@
+# @package _global_
+name: test
+label_key: mito
+
+trainer:
+  max_epochs: 1
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule: single,multi,fractional_loo
+      datamodule.sample: AD
+      datamodule.test_sample: AD_Abeta
+      datamodule.split_id: 1
+      model: cryovit,unet3d,medsam,sam2
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun

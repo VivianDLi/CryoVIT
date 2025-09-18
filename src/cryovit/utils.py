@@ -33,6 +33,8 @@ RECOGNIZED_FILE_EXTS = [
 
 
 def id_generator(size: int = 6, chars=string.ascii_lowercase + string.digits):
+    """Generates a random string of fixed size."""
+
     return "".join(random.choice(chars) for _ in range(size))
 
 
@@ -41,15 +43,26 @@ def id_generator(size: int = 6, chars=string.ascii_lowercase + string.digits):
 
 @dataclass
 class FileMetadata:
+    """Metadata information for a file.
+
+    Attributes:
+        drange: The dynamic range of the data.
+        dshape: The shape of the data.
+        dtype: The data type of the data.
+        nunique: The number of unique values in the data.
+    """
+
     drange: tuple[float, float]
     dshape: tuple[int, ...]
     dtype: np.dtype
     nunique: int = 0
 
 
-def read_hdf_keys(
+def _read_hdf_keys(
     hdf_file: h5py.File | h5py.Group, data_key: str | None = None
 ) -> tuple[dict[str, np.ndarray], dict[str, FileMetadata]]:
+    """Recursively read all keys in an HDF5 file or group, returning as a tuple of dictionaries of key: <data>/<metadata>. If a data_key is specified, only reads that key."""
+
     if len(hdf_file.keys()) == 0:
         return {}, {}
     data_results = {}
@@ -74,7 +87,7 @@ def read_hdf_keys(
             )
     for key in hdf_file:
         if isinstance(hdf_file[key], h5py.Group):
-            group_data_results, group_metadata_results = read_hdf_keys(hdf_file[key])  # type: ignore
+            group_data_results, group_metadata_results = _read_hdf_keys(hdf_file[key])  # type: ignore
             data_results.update(
                 {f"{key}/{k}": v for k, v in group_data_results.items()}
             )
@@ -101,8 +114,18 @@ def read_hdf_keys(
 def read_hdf(
     hdf_file: str | Path, key: str | None = None
 ) -> tuple[str, np.ndarray, FileMetadata]:
+    """Read data from an HDF5 file. If a key is not specified, assumes the data with the most unique values is the data.
+
+    Args:
+        hdf_file: The path to the HDF5 file.
+        key: The key to read from the HDF5 file. If None, assumes the data with the most unique values is the data. If not a valid key, will attempt to read all keys and use the one with the most unique values.
+
+    Returns:
+        A tuple of the key used, the data, and the metadata.
+    """
+
     with h5py.File(hdf_file, "r") as f:
-        data_dict, metadata_dict = read_hdf_keys(f, data_key=key)
+        data_dict, metadata_dict = _read_hdf_keys(f, data_key=key)
     if key is None:
         # Assume the data with the most unique values is the data
         data_key = max(metadata_dict.items(), key=lambda x: x[1].nunique)[0]
@@ -120,6 +143,15 @@ def read_hdf(
 
 
 def read_mrc(mrc_file: str | Path) -> tuple[np.ndarray, FileMetadata]:
+    """Read data from an MRC file.
+
+    Args:
+        mrc_file: The path to the MRC file.
+
+    Returns:
+        A tuple of the data and the metadata.
+    """
+
     data: np.ndarray = mrcfile.read(mrc_file)
     drange = (float(np.min(data)), float(np.max(data)))
     dshape = data.shape
@@ -131,6 +163,15 @@ def read_mrc(mrc_file: str | Path) -> tuple[np.ndarray, FileMetadata]:
 
 
 def read_tiff(tiff_file: str | Path) -> tuple[np.ndarray, FileMetadata]:
+    """Read data from a TIFF file.
+
+    Args:
+        tiff_file: The path to the TIFF file.
+
+    Returns:
+        A tuple of the data and the metadata.
+    """
+
     data: np.ndarray = tf.imread(tiff_file)
     drange = (float(np.min(data)), float(np.max(data)))
     dshape = data.shape
@@ -144,7 +185,20 @@ def read_tiff(tiff_file: str | Path) -> tuple[np.ndarray, FileMetadata]:
 def load_data(
     file_path: str | Path, key: str | None = None
 ) -> tuple[np.ndarray, str]:
-    """Load data or labels from a given file path. Supports .h5, .hdf5, .mrc, .mrcs formats."""
+    """Load data or labels from a given file path. Supports .h5, .hdf5, .mrc, .mrcs formats.
+
+    Args:
+        file_path: The path to the data file.
+        key: An optional key to specify which dataset to load from an HDF5 file.
+
+    Raises:
+        ValueError: If the file format is unsupported.
+        FileNotFoundError: If the specified file does not exist.
+
+    Returns:
+        A tuple of the data and the key used (empty string if not applicable).
+    """
+
     file_path = Path(file_path)
     found_key = ""
     if not file_path.exists():
@@ -173,7 +227,8 @@ def load_data(
 def _match_label_keys_to_data(
     data: np.ndarray, label_keys: list[str], metadata: FileMetadata
 ) -> dict[str, np.ndarray]:
-    """Match label keys to data based on unique values in the data, assuming background is 0."""
+    """Match label keys to data based on the number of unique values in the data and the provided label keys. Assumes label_keys are in ascending-value order."""
+
     labels = {}
     nunique = (
         metadata.nunique if metadata.drange[0] >= 0 else metadata.nunique - 1
@@ -184,7 +239,7 @@ def _match_label_keys_to_data(
             label = np.where((data != i) & (data != -1), 0, data)
             labels[key] = np.where(label == i, 1, label).astype(np.int8)
     elif nunique == len(label_keys) + 1 and 0 in np.unique(data):
-        logging.info(
+        logging.debug(
             "Assuming 0 is the background class in label data and hasn't been specified in label_keys."
         )
         label_values = sorted([x for x in np.unique(data).tolist() if x > 0])
@@ -201,7 +256,23 @@ def _match_label_keys_to_data(
 def load_labels(
     file_path: str | Path, label_keys: list[str], key: str | None
 ) -> dict[str, np.ndarray]:
-    """Load labels from a given file path, given a list of label names in ascending-value order. Supports .h5, .hdf5, .mrc, .mrcs, .tiff, .tif, and image folder formats."""
+    """Load labels from a given file path, given a list of label names in ascending-value order. Supports .h5, .hdf5, .mrc, .mrcs, .tiff, and .tif formats.
+
+    Args:
+        file_path: The path to the label file.
+        label_keys: A list of label names in ascending-value order (e.g., ['mito', 'cristae'] for 0=background, 1=mito, 2=cristae).
+        key: An optional key to specify which dataset to load from an HDF5 file.
+
+    Raises:
+        ValueError: If the number of unique values in the label data does not match the number of provided label keys.
+        ValueError: If the file format is unsupported.
+        ValueError: If the specified key is not found in the label data.
+        FileNotFoundError: If the specified file does not exist.
+
+    Returns:
+        A dictionary of label name to int8 label array.
+    """
+
     assert (
         key is None or key in label_keys
     ), f"Label key {key} must be one of the specified label keys {label_keys} or None."
@@ -230,6 +301,18 @@ def load_labels(
 
 
 def load_files_from_path(path: Path) -> list[Path]:
+    """Load files from a given directory or a .txt file listing file paths.
+
+    Args:
+        path (Path): The path to the directory or .txt file.
+
+    Raises:
+        ValueError: If the path is not a directory or a .txt file.
+
+    Returns:
+        list[Path]: A list of file paths.
+    """
+
     if path.is_dir():
         file_paths = sorted(
             [f for f in path.rglob("*") if f.suffix in tomogram_exts]
@@ -250,6 +333,16 @@ def load_files_from_path(path: Path) -> list[Path]:
 
 @dataclass
 class SavedModel:
+    """A class to represent a pre-trained model.
+
+    Attributes:
+        name: The name of the model.
+        model_type: The type of the model, e.g., 'CryoVIT', '3D U-Net'.
+        label_key: The label key used for training the model.
+        model_cfg: The config dictionary to instantiate the model.
+        weights: The saved weights of the model.
+    """
+
     name: str
     model_type: ModelType
     label_key: str
@@ -264,7 +357,16 @@ def save_model(
     model_cfg: BaseModel,
     save_path: str | Path,
 ) -> None:
-    """Save a model to a given path."""
+    """Save a model to a given path.
+
+    Args:
+        model_name: The name of the model.
+        label_key: The label key used for training the model.
+        model: The model to save.
+        model_cfg: The config dictionary to instantiate the model.
+        save_path: The path to save the model to.
+    """
+
     weights = model.state_dict()
     model_type = model_cfg.name.lower()
     saved_model = SavedModel(
@@ -281,14 +383,26 @@ def save_model(
 def load_model(
     model_path: str | Path, load_model: bool = True
 ) -> tuple[torch.nn.Module | None, ModelType, str, str]:
-    """Load a model from a given path. Returns the model, model type, model name, and label key."""
+    """Load a model from a given path.
+
+    Args:
+        model_path: The path to the model file.
+        load_model: Whether to load the model weights. If False, only returns the model type, name, and label key.
+
+    Raises:
+        FileNotFoundError: If the specified file does not exist.
+
+    Returns:
+        A tuple of the model (or None if load_model is False), the model type, the model name, and the label key.
+    """
+
     if not Path(model_path).exists():
         raise FileNotFoundError(f"Model file {model_path} does not exist.")
     with open(model_path, "rb") as f:
         saved_model = pickle.load(f)
     if load_model:
         model_dir = Path(__file__).parent / "foundation_models"
-        if saved_model.model_cfg._target_ == "cryovit.models.SAM2":
+        if saved_model.model_cfg._target_ == "cryovit.models.sam2.SAM2":
             # Load SAM2 pre-trained models
             model = create_sam_model_from_weights(
                 saved_model.model_cfg, model_dir / "SAM2"

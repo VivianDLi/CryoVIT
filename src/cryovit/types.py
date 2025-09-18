@@ -63,10 +63,10 @@ class FileData:
     This class represents the file data for a single tomogram.
 
     Attributes:
-        sample: A string representing the sample. None if not available.
         tomo_path: A path to the raw tomogram data.
         label_path: A path to the segmentation labels. None if not available.
         labels: A list of strings representing the label names. None if not available.
+        sample: A string representing the sample. None if not available.
     """
 
     tomo_path: Path
@@ -130,10 +130,10 @@ class BatchedTomogramData:
     Attributes:
         tomo_batch: A [[BxDxCxHxW] tensor containing the tomogram data for each slice in the batch, where D is a tomogram's depth, and B is the number of tomograms in the batch. The D dimension is padded to the max in the batch.
         tomo_sizes: A [B] tensor containing the size (D) of each tomogram in the batch.
-        num_total_slices: An integer containing the total number of slices in the batch.
         labels: A [[BxDxHxW] tensor containing the binary labels for segmentation objects in the batch.
-        aux_data: A dictionary containing additional data as a list of values, such as raw data input for dino_features.
         metadata: An instance of BatchedTomogramMetadata containing metadata about the batch and the tomograms inside.
+        min_slices: An integer representing the minimum number of slices of all tomograms in the batch.
+        aux_data: A dictionary containing additional data as a list of values, such as raw data input for dino_features.
     """
 
     tomo_batch: torch.Tensor
@@ -152,15 +152,18 @@ class BatchedTomogramData:
     @property
     def num_tomos(self) -> int:
         """Returns the number of tomograms in the batch."""
+
         return self.tomo_batch.shape[0]
 
     @property
     def num_slices(self) -> int:
         """Returns the maximum number of slices in the batch."""
+
         return self.tomo_batch.shape[1]
 
     def index_to_flat_batch(self, idx: int) -> torch.Tensor:
         """Returns a [BxD] tensor containing the indices corresponding to a certain slice in a flat batch tensor."""
+
         if idx >= self.num_slices:
             raise IndexError(
                 f"Slice index {idx} is out of bounds for the maximum number of slices {self.num_slices}."
@@ -174,6 +177,7 @@ class BatchedTomogramData:
     @property
     def flat_tomo_batch(self) -> torch.Tensor:
         """Returns a [[BxD]xCxHxW] tensor from a [BxDxCxHxW] tensor (C is optional)."""
+
         return self.tomo_batch.reshape(-1, *self.tomo_batch.shape[2:])
 
 
@@ -187,8 +191,8 @@ class BatchedModelResult:
         samples: The sample for each tomogram in the batch.
         tomo_names: The file name for each tomogram in the batch.
         split_id: The optional split id for each tomogram in the batch.
-        datas: The raw tomogram data for each tomogram in the batch.
-        labels: The true segmentation labels for each tomogram in the batch.
+        data: The raw tomogram data for each tomogram in the batch.
+        label: The true segmentation labels for each tomogram in the batch.
         preds: The model predictions for each tomogram in the batch.
         losses: A dictionary of losses for each tomogram in the batch.
         metrics: A dictionary of metrics for each tomogram in the batch.

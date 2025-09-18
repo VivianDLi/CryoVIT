@@ -22,8 +22,9 @@ class MultiSampleDataModule(BaseDataModule):
             sample (list[str]): list of samples used for training.
             split_id (Optional[int]): An optional split ID for validation.
             split_key (str): The key used to select splits using split_id.
-            test_sample (Optional[list[str]]): list of samples used for testing.
+            test_sample (Optional[list[str]]): list of samples used for testing. If None, test on the validation set.
         """
+
         super().__init__(**kwargs)
         # Validity checks
         assert isinstance(
@@ -46,6 +47,7 @@ class MultiSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the train tomograms.
         """
+
         assert self.record_df is not None
         if self.split_id is not None:
             df = self.record_df[
@@ -65,6 +67,7 @@ class MultiSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the validation tomograms.
         """
+
         assert self.record_df is not None
         if self.split_id is None:  # validate on train set
             return self.train_df()
@@ -80,6 +83,7 @@ class MultiSampleDataModule(BaseDataModule):
         Returns:
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
+
         assert self.record_df is not None
         if self.test_sample is None:
             return self.val_df()
@@ -89,6 +93,12 @@ class MultiSampleDataModule(BaseDataModule):
         ][["sample", "tomo_name"]]
 
     def predict_df(self) -> pd.DataFrame:
+        """Predict tomograms: predict on the specified samples.
+
+        Returns:
+            pd.DataFrame: A dataframe specifying the predict tomograms.
+        """
+
         assert self.record_df is not None
         return self.record_df[self.record_df["sample"].isin(self.sample)][
             ["sample", "tomo_name"]

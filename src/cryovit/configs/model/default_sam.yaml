@@ -1,4 +1,4 @@
-_target_: cryovit.models.SAM2
+_target_: cryovit.models.sam2.SAM2
 input_key: data
 lr: 5e-5
 
