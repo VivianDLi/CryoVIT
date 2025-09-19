@@ -380,6 +380,53 @@ def save_model(
         pickle.dump(saved_model, f)
 
 
+def save_model_from_weights(
+    model_name: str,
+    label_key: str,
+    model_type: ModelType,
+    weights_path: str | Path,
+    save_path: str | Path,
+    **kwargs,
+) -> None:
+    """Save a model to a given path from a weights file.
+
+    Args:
+        model_name: The name of the model.
+        label_key: The label key used for training the model.
+        model_type: The type of the model.
+        weights_path: The path to the weights file.
+        save_path: The path to save the model to.
+        **kwargs: Additional keyword arguments to pass to the model config. To access nested config parameters, use double underscores (e.g., `a.b -> a__b`).
+
+    Raises:
+        FileNotFoundError: If the weights file does not exist.
+    """
+    from hydra import compose, initialize
+
+    if not Path(weights_path).exists():
+        raise FileNotFoundError(f"Weights file {weights_path} does not exist.")
+    weights = torch.load(weights_path)
+    # load model from Hydra config
+    with initialize(
+        version_base="1.2",
+        config_path="configs",
+    ):
+        cfg = compose(
+            config_name="infer_model",
+            overrides=[f"model={model_type.value}"]
+            + [f"model.{k}={v}" for k, v in kwargs.items()],
+        )
+    model_dir = Path(__file__).parent / "foundation_models"
+    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
+        # Load SAM2 pre-trained models
+        model = create_sam_model_from_weights(cfg.model, model_dir / "SAM2")
+    else:
+        model = instantiate(cfg.model)
+    model.load_state_dict(weights)
+
+    save_model(model_name, label_key, model, cfg.model, save_path)
+
+
 def load_model(
     model_path: str | Path, load_model: bool = True
 ) -> tuple[torch.nn.Module | None, ModelType, str, str]:

@@ -20,6 +20,15 @@ case $2 in
             "Q66_GRFS1"
             "Q66_KD"
             "WT"
+            "RGC_CM"
+            "RGC_control"
+            "RGC_naPP"
+            "RGC_PP"
+            "AD"
+            "AD_Abeta"
+            "Aged"
+            "Young"
+            "CZI_Algae"
         )
         exp_name="fractional_mito"
         ;;
