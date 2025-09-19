@@ -16,10 +16,10 @@ as well as tools for training and evaluating custom models.
 .. _napari: https://napari.org/
 
 
-More details can be found in the `pre-print`_, and
+More details can be found in the `preprint`_, and
 you can check out the `source code`_ for implementation details.
 
-.. _pre-print: https://www.biorxiv.org/content/10.1101/2024.06.26.600701v1
+.. _preprint: https://www.biorxiv.org/content/10.1101/2024.06.26.600701v1
 .. _source code: https://github.com/VivianDLi/CryoVIT
 
 .. hint::
