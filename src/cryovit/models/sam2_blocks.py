@@ -1,4 +1,7 @@
-"""3D U-Net-based prompt predictor for SAM2 using image encodings, based on the prompt predictor in https://github.com/ChengyinLee/AutoProSAM_2024/ and nnU-Net, and LoRA adaptation for the MaskDecoder."""
+"""3D U-Net-based prompt predictor for SAM2 using image encodings and LoRA adaptation modules.
+
+Prompt predictor architecture is based on the prompt predictor in https://github.com/ChengyinLee/AutoProSAM_2024/ and https://github.com/MIC-DKFZ/nnUNet.
+"""
 
 import numpy as np
 import torch

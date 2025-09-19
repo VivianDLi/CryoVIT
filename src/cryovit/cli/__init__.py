@@ -1,3 +1,5 @@
+"""Command-line interface for CryoViT."""
+
 ## Necessary imports to register CLI commands in pyproject.toml. DO NOT REMOVE!
 from .cli import cli  # noqa: F401
 from .dino_cli import features  # noqa: F401

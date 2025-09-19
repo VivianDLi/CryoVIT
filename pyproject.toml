@@ -65,6 +65,11 @@ testing = [
     "pytest",  # https://docs.pytest.org/en/latest/contents.html
     "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
 ]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "doc8",
+]
 
 [build-system]
 requires = ["setuptools>=42.0.0", "setuptools_scm"]
@@ -128,3 +133,12 @@ exclude = [
     "*_vendor*",
 ]
 fix = true
+
+[tool.doc8]
+ignore_path = [
+    "docs/_build",
+    "docs/_modules",
+]
+
+[tool.esbonio.sphinx]
+pythonCommand = ["/home/vivian/miniforge3/envs/cryovit_env/bin/python"] # path to the python interpreter in environment

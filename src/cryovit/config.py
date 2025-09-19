@@ -1,4 +1,4 @@
-"""Defines and checks valid configurations for CryoViT experiments."""
+"""Hydra configuration classes for CryoViT experiments."""
 
 import logging
 import sys

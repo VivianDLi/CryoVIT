@@ -1,3 +1,5 @@
+"""Functions for plotting and visualizing results from CryoViT experiments."""
+
 from cryovit.visualization.dino_pca import process_samples
 from cryovit.visualization.fractional_sample import (
     process_fractional_experiment,

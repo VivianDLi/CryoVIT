@@ -1,4 +1,4 @@
-"""CryoViT Datasets."""
+"""Implementations of PyTorch datasets for loading Cryo-EM tomograms."""
 
 from cryovit.datasets.file_dataset import FileDataset
 from cryovit.datasets.tomo_dataset import TomoDataset

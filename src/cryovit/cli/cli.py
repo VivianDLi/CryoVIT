@@ -1,4 +1,6 @@
-"""Copied from https://github.com/teamtomo/fidder/blob/main/src/fidder/_cli.py."""
+"""Defines the command-line interface (CLI) for CryoViT.
+
+Copied from https://github.com/teamtomo/fidder/blob/main/src/fidder/_cli.py."""
 
 import typer
 from click import Context

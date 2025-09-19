@@ -1,4 +1,4 @@
-"""Defines custom types and dataclasses for model inputs and outputs."""
+"""Custom types and dataclasses for CryoViT models."""
 
 from dataclasses import dataclass
 from enum import Enum

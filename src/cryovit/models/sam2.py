@@ -1,4 +1,7 @@
-"""SAMv2 model for 2D/3D tomogram segmentation with a prompt predictor for automated segmentation. Code is based on the original SAM2 training code from https://github.com/facebookresearch/sam2/blob/main/training/model/sam2.py."""
+"""SAMv2 model for 2D/3D tomogram segmentation with a prompt predictor for automated segmentation.
+
+Code is based on the original SAM2 training code from https://github.com/facebookresearch/sam2/blob/main/training/model/sam2.py.
+"""
 
 import logging
 from pathlib import Path
