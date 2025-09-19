@@ -2,7 +2,7 @@
 defaults:
   - override /datamodule: fractional_loo
 
-name: fractional_${datamodule.test_sample}_${hydra:runtime.choices.model}_bacteria
+name: fractional_${hydra:runtime.choices.model}_bacteria
 label_key: bacteria
 
 hydra:
