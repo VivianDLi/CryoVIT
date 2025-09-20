@@ -18,6 +18,7 @@ def _plot_df(
     key: str,
     title: str,
     file_name: str,
+    plot_points: bool = True,
 ):
     import matplotlib
     import matplotlib.pyplot as plt
@@ -37,6 +38,8 @@ def _plot_df(
 
     fig = plt.figure(figsize=(12, 6))
     ax = plt.gca()
+    df["split_id"] = df["split_id"].astype(int)
+    label_counts = df["split_id"].value_counts()
 
     params = {
         "x": "split_id",
@@ -45,33 +48,47 @@ def _plot_df(
         "data": df,
     }
 
-    sns.boxplot(
-        showfliers=False,
-        palette=hue_palette,
-        linewidth=1,
-        medianprops={"linewidth": 2, "color": "firebrick"},
-        ax=ax,
-        **params,
-    )
-    sns.stripplot(
-        dodge=True,
-        marker=".",
-        alpha=0.5,
-        palette="dark:black",
-        ax=ax,
-        **params,
-    )
+    if plot_points:
+        sns.boxplot(
+            showfliers=False,
+            palette=hue_palette,
+            linewidth=1,
+            medianprops={"linewidth": 2, "color": "firebrick"},
+            ax=ax,
+            **params,
+        )
+        sns.stripplot(
+            dodge=True,
+            marker=".",
+            alpha=0.5,
+            palette="dark:black",
+            ax=ax,
+            **params,
+        )
 
-    k1, k2 = df[key].unique()
-    pairs = [[(s, k1), (s, k2)] for s in pvalues.index]
+        k1, k2 = df[key].unique()
+        pairs = [[(s, k1), (s, k2)] for s in pvalues.index]
 
-    annotator = Annotator(ax, pairs, **params)
-    annotator.configure(color="blue", line_width=1, verbose=False)
-    annotator.set_pvalues_and_annotate(pvalues.values)
+        annotator = Annotator(ax, pairs, **params)
+        annotator.configure(color="blue", line_width=1, verbose=False)
+        annotator.set_pvalues_and_annotate(pvalues.values)
+    else:
+        sns.lineplot(
+            marker="o",
+            markersize=8,
+            linewidth=2,
+            palette=hue_palette,
+            ax=ax,
+            **params,
+        )
+        ax.set_xticks(df["split_id"].unique())
 
     current_labels = ax.get_xticklabels()
-    new_labels = [f"{label.get_text()}0%" for label in current_labels]
-    ax.set_xticks(range(len(new_labels)))
+    new_labels = [
+        f"{label.get_text()}0%\n(n={label_counts[int(label.get_text())]})"
+        for label in current_labels
+    ]
+    ax.set_xticks(ax.get_xticks())
     ax.set_xticklabels(new_labels, ha="center")
 
     ax.set_ylim(-0.05, 1.15)
@@ -86,8 +103,10 @@ def _plot_df(
     plt.legend(handles[:2], labels[:2], loc="lower center", shadow=True)
 
     plt.tight_layout()
-    plt.savefig(f"{file_name}.svg")
-    plt.savefig(f"{file_name}.png", dpi=300)
+    plt.savefig(f"{file_name}{'_line' if not plot_points else ''}.svg")
+    plt.savefig(
+        f"{file_name}{'_line' if not plot_points else ''}.png", dpi=300
+    )
 
 
 def process_fractional_experiment(
@@ -96,6 +115,7 @@ def process_fractional_experiment(
     exp_names: dict[str, list[str]],
     exp_dir: Path,
     result_dir: Path,
+    plot_points: bool = True,
 ):
     """Plot fractional experiment results with box and strip plots including annotations for statistical tests.
 
@@ -131,8 +151,9 @@ def process_fractional_experiment(
             df,
             p_values,
             key,
-            f"Model Comparison on All {label.upper()} Samples",
+            f"Model Comparison on All {label.capitalize()} Samples",
             str(result_dir / f"{label}_{exp_type}_comparison"),
+            plot_points=plot_points,
         )
     else:
         _plot_df(
@@ -141,4 +162,5 @@ def process_fractional_experiment(
             key,
             "CryoViT: Sparse vs. Dense Labels Comparison on All Samples",
             str(result_dir / "fractional_sparse_vs_dense_comparison"),
+            plot_points=plot_points,
         )

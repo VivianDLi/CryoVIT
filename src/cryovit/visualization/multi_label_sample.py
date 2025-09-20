@@ -122,8 +122,8 @@ def process_multi_label_experiment(
     df = merge_experiments(exp_dir, exp_names, keys=["model", "label"])
     test_fn = functools.partial(
         significance_test,
-        model_A=("CryoViT"),
-        model_B=("3D U-Net"),
+        model_A="CryoViT",
+        model_B="3D U-Net",
         key="model",
         test_fn="wilcoxon",
     )

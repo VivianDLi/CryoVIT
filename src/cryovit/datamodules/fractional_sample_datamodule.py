@@ -68,13 +68,15 @@ class FractionalSampleDataModule(BaseDataModule):
         assert self.record_df is not None
         if self.split_id is not None:
             training_splits = list(range(self.split_id))
+            keys = ["sample", "tomo_name", self.split_key]
         else:
             training_splits = list(range(self.record_df[self.split_key].max()))
+            keys = ["sample", "tomo_name"]
 
         return self.record_df[
             (self.record_df[self.split_key].isin(training_splits))
             & (self.record_df["sample"].isin(self.test_sample))
-        ][["sample", "tomo_name"]]
+        ][keys]
 
     def test_df(self) -> pd.DataFrame:
         """Test tomograms: test on tomograms from the held out sample.
@@ -83,7 +85,11 @@ class FractionalSampleDataModule(BaseDataModule):
             pd.DataFrame: A dataframe specifying the test tomograms.
         """
 
-        return self.val_df()
+        df = self.val_df()
+        # replace split_id with split fraction if it exists
+        if self.split_key in df.columns:
+            df["split_id"] = self.split_id
+        return df
 
     def predict_df(self) -> pd.DataFrame:
         """Predict tomograms: predict on the specified samples.

@@ -37,9 +37,7 @@ class MultiSampleDataModule(BaseDataModule):
         self.sample = sample
         self.split_id = split_id
         self.split_key = split_key
-        self.test_sample = (
-            test_sample if test_sample is not None else self.sample
-        )
+        self.test_sample = test_sample
 
     def train_df(self) -> pd.DataFrame:
         """Train tomograms: exclude those with the specified split_id.
