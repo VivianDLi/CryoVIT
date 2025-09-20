@@ -17,6 +17,7 @@
       read_mrc
       read_tiff
       save_model
+      save_model_from_weights
    
    .. rubric:: Classes
 

@@ -15,7 +15,9 @@ samples: list[str] = [sample.name for sample in Sample]
 tomogram_exts: list[str] = [".hdf", ".mrc"]
 
 DINO_PATCH_SIZE = 14
-DEFAULT_WINDOW_SIZE = 630
+DEFAULT_WINDOW_SIZE = (
+    630  # Calculated assuming DINOv2 patch size of 14 and input size of 720
+)
 
 
 @dataclass

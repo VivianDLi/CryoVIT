@@ -21,6 +21,7 @@ from cryovit.types import ModelType
 
 #### General File Utilities ####
 
+# Recognized file extensions for data files
 RECOGNIZED_FILE_EXTS = [
     ".h5",
     ".hdf",

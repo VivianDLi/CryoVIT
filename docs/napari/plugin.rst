@@ -1,2 +1,2 @@
-Running CryoViT using Napari
+Running using Napari
 ============================

@@ -2,11 +2,14 @@
 
 # Check if four arguments are provided
 if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 model (cryovit, unet3d, sam2, or medsam) label_key (microtubule, cristae, granule, bacteria) wandb_api_key"
+    echo "Usage: $0 model (cryovit, unet3d, sam2, or medsam) label_key (mito, microtubule, cristae, granule, bacteria) wandb_api_key"
     exit 1
 fi
 
 case $2 in
+    "mito")
+        exp_name="multi_mito"
+        ;;
     "microtubule")
         exp_name="multi_microtubule"
         ;;
@@ -20,7 +23,7 @@ case $2 in
         exp_name="multi_bacteria"
         ;;
     *)
-        echo "Invalid label_key. Choose from: microtubule, cristae, granule, bacteria."
+        echo "Invalid label_key. Choose from: mito, microtubule, cristae, granule, bacteria."
         exit 1
         ;;
 esac

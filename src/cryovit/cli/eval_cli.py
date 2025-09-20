@@ -42,7 +42,7 @@ def evaluate(
         Option(
             "--visualize",
             "-v",
-            help="Save visualizations of model predictions?. This will slightly increase the runtime. Results will be saved in a folder named `visualizations` inside the result folder.",
+            help="Save visualizations of model predictions?. This will slightly increase the runtime. Results will be saved in a folder named `predictions` inside the result folder.",
         ),
     ] = False,
 ):

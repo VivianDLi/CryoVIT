@@ -25,7 +25,7 @@ you can check out the `source code`_ for implementation details.
 .. hint::
    - If you already have a dataset, and just want to get it segmented using one of the provided pre-trained models, check out the :ref:`quick start guide <quick start guide>`.
 
-   - If you are new to CryoViT and want to train your own segmentation model, check out the :ref:`Beginner Topics <beginnertopics>` for help in creating a :ref:`training dataset <setting up a dataset>`, and training with either the :ref:`command line <running cryovit from the command line>` or the :ref:`napari plugin <running cryovit using napari>`.
+   - If you are new to CryoViT and want to train your own segmentation model, check out the :ref:`Beginner Topics <beginnertopics>` for help in creating a :ref:`training dataset <setting up a dataset>`, and training with either the :ref:`command line <running from the command line>` or the :ref:`napari plugin <running using napari>`.
 
    - If you are familiar with deep learning and want to run more advanced experiments, check out the :ref:`Advanced Topics <advancedtopics>` for help in setting up CryoViT to run on cluster resources, and using Hydra to run comprehensive experiments.
 

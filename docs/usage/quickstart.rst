@@ -1,7 +1,7 @@
 Quick Start Guide
 =========================
 
-This guide goes over a quick example of using CryoViT
+This section goes over a quick example of using CryoViT
 to segment mitochondria in a group of Cryo-ET tomograms
 using a pre-trained model.
 
@@ -21,14 +21,11 @@ contents: ::
 
     $ tar -xzf example_data.tar.gz
 
-.. TODO: add method/location to download example_data as .tar.gz
-.. _example_data: https://github.com/VivianDLi/CryoViT-Example-Data
+.. _example_data: https://drive.google.com/file/d/13jaM9cxUKE-7YscTvIgJdtHD1rIeW_FY/view?usp=drive_link
 
 This will extract a directory ``example_data`` containing a
 folder of tomograms ``data/`` and a pre-trained model
 file ``pretrained_model.model``.
-
-.. TODO: replace code blocks with actual results
 
 ============================
 Viewing Tomogram Data
@@ -55,17 +52,30 @@ which returns the data as a `numpy array`_:
 .. code-block:: python
 
     >>> from cryovit.utils import load_data
-    >>> data, key = load_data("example_data/data/tomogram_01.hdf")
+    >>> data, key = load_data("example_data/data/HD_iPSC_sample_bin4.hdf")
     >>> data
-    array([[[...]]], dtype=float32)
+    array([[[[0.69411767, 0.5647059 , 0.62352943, ..., 0.49411765,
+          0.50980395, 0.47843137],
+         [0.5921569 , 0.63529414, 0.6509804 , ..., 0.49803922,
+          0.5058824 , 0.50980395],
+         [0.6       , 0.6627451 , 0.56078434, ..., 0.5254902 ,
+          0.4862745 , 0.5058824 ],
+         ...,
+         [0.5019608 , 0.5019608 , 0.49019608, ..., 0.50980395,
+          0.4745098 , 0.49411765],
+         [0.49803922, 0.5058824 , 0.5058824 , ..., 0.49411765,
+          0.49411765, 0.52156866],
+         [0.49803922, 0.49803922, 0.5019608 , ..., 0.4745098 ,
+          0.5411765 , 0.49411765]]]],
+      shape=(1, 128, 512, 512), dtype=float32)
     >>> key
     'data'
     >>> print(type(data))
     <class 'numpy.ndarray'>
     >>> print(data.shape)
-    (100, 512, 512)
+    (1, 128, 512, 512)  # load_data adds an additional channel dimension
     >>> print(data.dtype.name)
-    'float32'
+    float32
 
 ============================
 Viewing Model Information
@@ -87,23 +97,25 @@ containing the model (a `pytorch model`_), and its metadata.
 .. code-block:: python
 
     >>> from cryovit.utils import load_model
-    >>> model, model_type, name, label = load_model("example_data/pretrained_model.model")
+    >>> model, model_type, name, label = load_model("example_data/pretrained_mito.model")
     >>> print(model)
-    CryoViT(
-      (patch_embed): PatchEmbed(
-        (proj): Conv3d(1, 96, kernel_size=(4, 4, 4), stride=(4, 4, 4))
-        (norm): LayerNorm((96,), eps=1e-06, elementwise_affine=True)
-      )
-      ...
-      (norm): LayerNorm((768,), eps=1e-06, elementwise_affine=True)
-      (head): Linear(in_features=768, out_features=2, bias=True)
+    CryoVIT(
+        (metric_fns): ModuleDict(
+            ...
+        )
+        (layers): Sequential(
+            ...
+        )
+        (output_layer): Sequential(
+            ...
+        )
     )
-    >>> print(model_type.name,  model_type.value)
-    ModelType.CRYOVIT 'cryovit'
+    >>> print(model_type)
+    ModelType.CRYOVIT
     >>> print(name)
-    'pretrained_example'
+    pretrained_mito
     >>> print(label)
-    'mito'
+    mito
 
 We see that the ``model_type`` is ``ModelType.CRYOVIT``,
 indicating that this is a CryoViT segmentation model, and the
@@ -120,7 +132,11 @@ You can see all available scripts by running: ::
     # or
     $ cryovit
 
-.. TODO: insert screenshot of `cryovit --help` output
+.. figure:: ../_static/tutorial/cryovit_cli_output.png
+   :align: center
+   :width: 95%
+
+   Output of ``cryovit --help`` command.
 
 and the arguments for a specific script by running: ::
 
@@ -137,20 +153,24 @@ and ``inference``. For this quick start guide, we will be using the
     Since the model is a CryoViT model, we need to run the ``features``
     script first to extract the high-level ViT features from the tomograms.
 
-.. TODO: insert screenshot of cryovit features --help output
+.. figure:: ../_static/tutorial/cryovit_cli_features_output.png
+   :align: center
+   :width: 95%
+
+   Output of ``cryovit features --help`` command.
 
 To run the ``features`` script, we need to specify the input tomogram folder and the output directory to save the extracted features: ::
 
     $ cryovit features example_data/data example_data/features
 
-.. tip::
+.. note::
 
     This step requires a GPU, and is possibly very memory-intensive. If you run into out-of-memory issues, try reducing the ``--batch-size`` or ``--window-size`` arguments. Reducing the batch size is preferable, as reducing the window size will affect the quality of the extracted features.
 
-Then, we can run the ``inference`` script on the extracted features,
+Then, we can run the ``infer`` script on the extracted features,
 storing the results in a ``predictions`` folder: ::
 
-    $ cryovit inference example_data/features --model example_data/pretrained_model.model --result-folder example_data/predictions
+    $ cryovit infer example_data/features --model example_data/pretrained_model.model --result-folder example_data/predictions
 
 ============================
 Viewing Segmentation Results
@@ -168,4 +188,8 @@ to view the results in 3D, as shown below:
 
 .. _ChimeraX: https://www.rbvi.ucsf.edu/chimerax/
 
-.. TODO: insert screenshot of ChimeraX visualization
+.. figure:: ../_static/tutorial/tutorial_chimerax.png
+   :align: center
+   :width: 95%
+
+   Visualization of tomogram and segmentation results in ChimeraX.
