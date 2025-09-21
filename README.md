@@ -10,7 +10,7 @@ CryoVIT uses Mamba to manage python packages and dependencies and can be downloa
 
 ## Usage Instructions
 
-For more details, check out the documentation.
+For more details, check out the [documentation](https://cryovit.readthedocs.io/en/latest/).
 
 ## Replicating Experiments
 
