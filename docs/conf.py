@@ -6,24 +6,9 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-import os
-import sys
-
-## Make your modules available in sys.path
-sys.path.insert(
-    0,
-    os.path.join(
-        os.path.abspath(os.path.dirname(os.path.dirname(__file__))), "src"
-    ),
-)
-
-from cryovit import __version_tuple__
-
 project = "CryoViT"
 copyright = "%Y, Vivian Li, Sanket Gupte"  # noqa: A001
 author = "Vivian Li, Sanket Gupte"
-version = ".".join(map(str, __version_tuple__))
-release = ".".join(map(str, __version_tuple__[:2]))
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
