@@ -45,7 +45,7 @@ To install the latest stable release of CryoViT, run ::
     $ pip install -U cryovit
 
 Installing from PyPI will naturally give access to all features covered
-in :ref:`the beginner topics <beginnertopics>`,
+in :ref:`the user guide <user guide>`,
 including the CLI and napari plugin.
 However, some advanced features, such as training on clusters and large-scale
 experiments, require building from source, as described below.

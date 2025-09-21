@@ -1,2 +1,0 @@
-Visualize CryoViT experiment results
-====================================

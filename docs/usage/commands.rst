@@ -98,3 +98,30 @@ current directory).
 Using a Pre-trained Model
 =========================
 
+You can use your trained model to segment new data using the
+``predict`` command:
+
+.. figure:: ../_static/tutorial/cryovit_cli_infer_output.png
+    :align: center
+    :width: 95%
+
+    Output of ``cryovit infer --help`` command.
+
+This command only requires you put the data to be segmented
+in a single folder or list their paths in a ``.txt`` file,
+and specify a pre-trained model file. For example: ::
+
+    $ cryovit infer data.txt mito_model.model
+
+Similar to the ``evaluate`` command, this will create a ``predictions``
+folder in the current directory, containing the predicted segmentations
+as ``.hdf`` files.
+
+.. tip::
+
+    If you find that your predictions are either over-segmenting
+    or under-segmenting, you can adjust the threshold used to
+    binarize the predicted probabilities using the ``--threshold``
+    argument. The default value is ``0.5``, but you can increase
+    this value to make the predictions more conservative, or
+    decrease it to make the predictions more aggressive.

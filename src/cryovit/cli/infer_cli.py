@@ -51,7 +51,9 @@ def infer(
     ## Convert Arguments
     tomograms_path = Path(tomograms)
     model_path = Path(model)
-    result_path = Path(result_folder) if result_folder else Path.cwd()
+    result_path = (
+        Path(result_folder) if result_folder else Path.cwd() / "predictions"
+    )
 
     ## Sanity Checking
     assert tomograms_path.exists(), "Tomograms path does not exist."

@@ -25,11 +25,13 @@ you can check out the `source code`_ for implementation details.
 .. hint::
    - If you already have a dataset, and just want to get it segmented using one of the provided pre-trained models, check out the :ref:`quick start guide <quick start guide>`.
 
-   - If you are new to CryoViT and want to train your own segmentation model, check out the :ref:`Beginner Topics <beginnertopics>` for help in creating a :ref:`training dataset <setting up a dataset>`, and training with either the :ref:`command line <running from the command line>` or the :ref:`napari plugin <running using napari>`.
+   - If you are new to CryoViT and want to train your own segmentation model, check out the :ref:`user guide <user guide>`.
 
-   - If you are familiar with deep learning and want to run more advanced experiments, check out the :ref:`Advanced Topics <advancedtopics>` for help in setting up CryoViT to run on cluster resources, and using Hydra to run comprehensive experiments.
+   - For more information on running experiments like those shown in the CryoViT paper, check out the `GitHub repository`_ for example configuration files and instructions.
 
    - If you run into any issues, check out :ref:`the help section <debugging issues>` to see if your issue has already been addressed.
+
+.. _GitHub repository: https://github.com/VivianDLi/CryoVIT
 
 =================================================
 Getting Started
@@ -57,29 +59,15 @@ from preparing your dataset for training or inference,
 to running commands using either the CLI or napari plugin.
 
 .. toctree::
-   :name: beginnertopics
+   :name: userguide
    :maxdepth: 2
-   :caption: Beginner Topics
+   :caption: User Guide
 
    usage/dataset
    usage/commands
    napari/plugin
 
-These sections go over more advanced topics, from
-setting up CryoViT to run on cluster resources,
-to using Hydra to run comprehensive experiments.
-
-.. toctree::
-   :name: advancedtopics
-   :maxdepth: 2
-   :caption: Advanced Topics
-
-   development/compute
-   usage/experiments
-   development/visualization
-
-.. toctree::
-   :maxdepth: 2
+..  toctree::
    :caption: Help
    :hidden:
 
