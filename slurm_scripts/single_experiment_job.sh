@@ -7,6 +7,7 @@ model=$2
 env_dir=/sdf/home/v/vdl21/projects/libs/
 
 export CONDA_PREFIX="${env_dir}/cryovit_env"
+export TORCHINDUCTOR_FORCE_DISABLE_CACHES=1
 
 # Handle optional model and label_key arguments
 if [ "$#" == 4 ]; then
