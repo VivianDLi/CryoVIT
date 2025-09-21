@@ -17,7 +17,7 @@ sys.path.insert(
     ),
 )
 
-from cryovit._version import __version_tuple__
+from cryovit import __version_tuple__
 
 project = "CryoViT"
 copyright = "%Y, Vivian Li, Sanket Gupte"  # noqa: A001
