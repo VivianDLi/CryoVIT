@@ -1,19 +1,21 @@
-"""Implementation of the fractional leave one out data module."""
+"""Implementation of the fractional  data module."""
 
+import numpy as np
 import pandas as pd
+from sklearn.model_selection import KFold
 
 from cryovit.datamodules.base_datamodule import BaseDataModule
 
 
-class FractionalSampleDataModule(BaseDataModule):
-    """Data module for fractional leave-one-out CryoVIT experiments."""
+class FractionalDataModule(BaseDataModule):
+    """Data module for fractional CryoVIT experiments."""
 
     def __init__(
         self,
         sample: list[str],
         split_id: int | None,
         split_key: str | None,
-        test_sample: list[str] | None = None,
+        test_sample: int | None = None,
         **kwargs,
     ) -> None:
         """Train on a fraction of tomograms and leave out one sample for evaluation.
@@ -22,7 +24,7 @@ class FractionalSampleDataModule(BaseDataModule):
             sample (list[str]): The samples to train and test on.
             split_id (Optional[int]): The number of splits used for training. If None, defaults to all splits.
             split_key (str): The key used to select splits using split_id.
-            test_sample (Optional[list[str]]): The sample to exclude from training and use for testing.
+            test_sample (Optional[int]): The split to exclude from training and use for testing.
         """
 
         super().__init__(**kwargs)
@@ -30,32 +32,48 @@ class FractionalSampleDataModule(BaseDataModule):
         assert (
             test_sample is not None
         ), "Fractional sample `test_sample` cannot be None."
-        assert (
-            len(test_sample) == 1
-        ), f"Fractional sample 'test_sample' should be a single string list. Got {test_sample} instead."
+        assert isinstance(
+            test_sample, int
+        ), f"Fractional sample 'test_sample' should be an integer. Got {test_sample} instead."
+
+        # Add new splits for fractional training
+        num_samples = self.record_df.shape[0]
+        n_splits = 11  # Using 10-fold + 1 for LOO
+        kf = KFold(n_splits=n_splits, shuffle=True)
+        X = np.array([[0] for _ in range(num_samples)])
+        splits = [-1 for _ in range(num_samples)]
+        for f, (_, test) in enumerate(kf.split(X)):
+            for idx in test:
+                splits[idx] = f
+        self.record_df[split_key] = splits
 
         self.sample = sample
         self.split_id = split_id
         self.split_key = split_key
-        self.test_sample = test_sample
+        self.test_id = test_sample
 
     def train_df(self) -> pd.DataFrame:
-        """Train tomograms: include a subset of all splits, leaving out one sample.
+        """Train tomograms: include a subset of all splits, leaving out one split.
 
         Returns:
             pd.DataFrame: A dataframe specifying the train tomograms.
         """
 
         assert self.record_df is not None
+        all_splits = sorted(
+            set(self.record_df[self.split_key].unique()) - {self.test_id}
+        )
+        assert (
+            len(all_splits) == 10
+        ), "There should be 10 splits for fractional training."
         if self.split_id is not None:
-            training_splits = list(range(self.split_id))
+            training_splits = all_splits[: self.split_id]
         else:
-            training_splits = list(range(self.record_df[self.split_key].max()))
+            training_splits = all_splits
 
         return self.record_df[
             (self.record_df[self.split_key].isin(training_splits))
             & (self.record_df["sample"].isin(self.sample))
-            & ~self.record_df["sample"].isin(self.test_sample)
         ][["sample", "tomo_name"]]
 
     def val_df(self) -> pd.DataFrame:
@@ -66,9 +84,9 @@ class FractionalSampleDataModule(BaseDataModule):
         """
 
         assert self.record_df is not None
-
         return self.record_df[
-            (self.record_df["sample"].isin(self.test_sample))
+            (self.record_df[self.split_key] == self.test_id)
+            & (self.record_df["sample"].isin(self.sample))
         ]
 
     def test_df(self) -> pd.DataFrame:

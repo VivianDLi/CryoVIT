@@ -26,3 +26,12 @@ $env_dir/cryovit_env/bin/python -m \
     datamodule=single \
     datamodule.sample=$sample \
     datamodule.split_id=$split_id
+
+$env_dir/cryovit_env/bin/python -m \
+    cryovit.training.eval_model \
+    model=$model \
+    name="single_${sample_group}_${model}_${label_key}" \
+    label_key=$label_key \
+    datamodule=single \
+    datamodule.sample=$sample \
+    datamodule.split_id=$split_id

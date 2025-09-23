@@ -1,8 +1,8 @@
 #!/bin/bash
 
 exp_name=$1
-sample=$2
-split_id=$3
+split_id=$2
+fraction_id=$3
 model=$4
 label_key=$5
 
@@ -21,6 +21,14 @@ $env_dir/cryovit_env/bin/python -m \
     cryovit.training.train_model \
     +experiments=$exp_name \
     model=$model \
-    datamodule.test_sample=$sample \
-    datamodule.split_id=$split_id \
+    datamodule.test_sample=$split_id \
+    datamodule.split_id=$fraction_id \
+    label_key=$label_key
+
+$env_dir/cryovit_env/bin/python -m \
+    cryovit.training.eval_model \
+    +experiments=$exp_name \
+    model=$model \
+    datamodule.test_sample=$split_id \
+    datamodule.split_id=$fraction_id \
     label_key=$label_key

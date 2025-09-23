@@ -1,6 +1,6 @@
 # @package _global_
 defaults:
-  - override /datamodule: fractional_loo
+  - override /datamodule: fractional
 
 name: fractional_${hydra:runtime.choices.model}_granule
 label_key: granule
@@ -18,7 +18,7 @@ hydra:
         - Q66
         - WT
       datamodule.test_sample:
-        BACHD,Q109,Q18,Q20,Q53,Q66,WT
+        0,1,2,3,4,5,6,7,8,9,10
       datamodule.split_id:
         1,2,3,4,5,6,7,8,9,10
       model:

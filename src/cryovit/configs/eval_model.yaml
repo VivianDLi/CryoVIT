@@ -15,7 +15,7 @@ defaults:
   - trainer: eval
   - callbacks:
     - rich_progress_bar
-#    - test_pred_writer  # comment to speed up evaluation if not needed
+    - test_pred_writer  # comment to speed up evaluation if not needed
     - csv_writer
   - datamodule: ???
   - base_experiment_config

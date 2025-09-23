@@ -262,7 +262,9 @@ def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
         if sample not in samples:
             invalid_samples.append(sample)
 
-    if cfg.datamodule.test_sample is not None:
+    if cfg.datamodule.test_sample is not None and isinstance(
+        cfg.datamodule.test_sample, list
+    ):
         for sample in cfg.datamodule.test_sample:
             if sample not in samples:
                 invalid_samples.append(sample)

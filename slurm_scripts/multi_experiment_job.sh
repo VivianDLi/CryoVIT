@@ -22,3 +22,10 @@ $env_dir/cryovit_env/bin/python -m \
     model=$model \
     datamodule.split_id=$split_id \
     label_key=$label_key
+
+$env_dir/cryovit_env/bin/python -m \
+    cryovit.training.eval_model \
+    +experiments=$exp_name \
+    model=$model \
+    datamodule.split_id=$split_id \
+    label_key=$label_key

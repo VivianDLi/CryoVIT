@@ -23,6 +23,12 @@ if [ "$#" == 4 ]; then
         +experiments=$exp_name \
         model=$model \
         datamodule.sample=$sample
+    
+    $env_dir/cryovit_env/bin/python -m \
+        cryovit.training.eval_model \
+        +experiments=$exp_name \
+        model=$model \
+        datamodule.sample=$sample
 else
     # Setup W&B API key
     if [ -z "$WANDB_API_KEY" ]; then
@@ -31,6 +37,11 @@ else
 
     $env_dir/cryovit_env/bin/python -m \
         cryovit.training.train_model \
+        +experiments=$exp_name \
+        model=$model
+    
+    $env_dir/cryovit_env/bin/python -m \
+        cryovit.training.eval_model \
         +experiments=$exp_name \
         model=$model
 fi

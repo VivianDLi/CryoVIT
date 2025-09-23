@@ -107,6 +107,12 @@ class TomoDataset(Dataset):
             data_dict["split_id"] = record[self.split_key]
 
         with h5py.File(tomo_path) as fh:
+            assert (
+                self.input_key in fh
+            ), f"Input key '{self.input_key}' not found in {tomo_path}."
+            assert (
+                self.label_key in fh["labels"]
+            ), f"Label key '{self.label_key}' not found in {tomo_path}/labels."  # type: ignore
             data: np.ndarray = fh[self.input_key][()]  # type: ignore
             if data.dtype == np.uint8:
                 data = data.astype(np.float32) / 255.0

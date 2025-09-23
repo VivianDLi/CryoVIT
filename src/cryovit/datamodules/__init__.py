@@ -2,6 +2,7 @@
 
 from cryovit.datamodules.base_datamodule import BaseDataModule
 from cryovit.datamodules.file_datamodule import FileDataModule
+from cryovit.datamodules.fractional_datamodule import FractionalDataModule
 from cryovit.datamodules.fractional_sample_datamodule import (
     FractionalSampleDataModule,
 )
@@ -10,6 +11,7 @@ from cryovit.datamodules.single_sample_datamodule import SingleSampleDataModule
 
 __all__ = [
     "BaseDataModule",
+    "FractionalDataModule",
     "FractionalSampleDataModule",
     "SingleSampleDataModule",
     "MultiSampleDataModule",

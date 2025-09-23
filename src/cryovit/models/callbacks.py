@@ -47,23 +47,15 @@ class TestPredictionWriter(Callback):
 
             # Binary classify predictions into segmentations and convert to correct formats
             data = outputs.data[n]
-            labels = outputs.label[n].astype(np.uint8)
+            labels = outputs.label[n]
             preds = outputs.preds[n]
-            preds = (preds - preds.min()) / (preds.max() - preds.min())
-            segs = preds.astype(np.float32)  # Normalize to [0, 1]
-            true_segs = np.where(labels > 0, 1, 0).astype(
-                np.uint8
-            )  # Convert labels to binary segmentation
 
             with h5py.File(output_file, "w") as fh:
-                fh.create_group("predictions")
-                fh.create_group("labels")
-
                 fh.create_dataset(
                     "data", data=data, shape=data.shape, dtype=data.dtype
                 )
-                fh["predictions"].create_dataset(self.label_key, data=segs, shape=segs.shape, dtype=segs.dtype, compression="gzip")  # type: ignore
-                fh["labels"].create_dataset(self.label_key, data=true_segs, shape=labels.shape, dtype=labels.dtype, compression="gzip")  # type: ignore
+                fh.create_dataset(self.label_key, data=labels, shape=labels.shape, dtype=labels.dtype, compression="gzip")  # type: ignore
+                fh.create_dataset(f"{self.label_key}_preds", data=preds, shape=preds.shape, dtype=preds.dtype, compression="gzip")  # type: ignore
 
                 if outputs.aux_data is not None:
                     fh.create_group("aux_data")

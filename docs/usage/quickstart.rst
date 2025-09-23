@@ -16,12 +16,12 @@ using a pre-trained model.
 
 .. highlight:: console
 
-First, download the example data from `here <example_data>`_ and its
+First, download the example data from `here`_ and its
 contents: ::
 
     $ tar -xzf example_data.tar.gz
 
-.. _example_data: https://drive.google.com/file/d/13jaM9cxUKE-7YscTvIgJdtHD1rIeW_FY/view?usp=drive_link
+.. _here: https://drive.google.com/file/d/13jaM9cxUKE-7YscTvIgJdtHD1rIeW_FY/view?usp=drive_link
 
 This will extract a directory ``example_data`` containing a
 folder of tomograms ``data/`` and a pre-trained model
