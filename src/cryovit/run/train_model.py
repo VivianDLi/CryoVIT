@@ -181,12 +181,9 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     new_exp_dir.mkdir(parents=True, exist_ok=True)
     if cfg.datamodule.split_id is not None:
         new_exp_dir = new_exp_dir / f"split_{cfg.datamodule.split_id}"
-    if (
-        cfg.datamodule._target_
-        == "cryovit.datamodules.FractionalSampleDataModule"
-        and test_sample is not None
-    ):
-        new_exp_dir = new_exp_dir / f"{test_sample}"
+    if "Fractional" in cfg.datamodule._target_ and test_sample is not None:
+        new_exp_dir.mkdir(parents=True, exist_ok=True)
+        new_exp_dir = new_exp_dir / f"test_{test_sample}"
 
     new_exp_dir.mkdir(parents=True, exist_ok=True)
     cfg.paths.exp_dir = new_exp_dir
@@ -194,10 +191,13 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     # Setup WandB Logger
     for name, lg in cfg.logger.items():
         if name == "wandb":
+            lg_name = (
+                str(test_sample) if test_sample is not None else str(sample)
+            )
             lg.name = (
-                f"{test_sample or sample}_{cfg.datamodule.split_id}"
+                f"{lg_name}_{cfg.datamodule.split_id}"
                 if cfg.datamodule.split_id is not None
-                else (test_sample or sample)
+                else lg_name
             )
 
     return cfg

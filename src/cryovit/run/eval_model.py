@@ -126,12 +126,8 @@ def setup_exp_dir(cfg: BaseExperimentConfig) -> BaseExperimentConfig:
     if cfg.datamodule.split_id is not None:
         new_exp_dir = new_exp_dir / f"split_{cfg.datamodule.split_id}"
     # Append test sample only for fractional sample experiments (test sample is separated for validation)
-    if (
-        cfg.datamodule._target_
-        == "cryovit.datamodules.FractionalSampleDataModule"
-        and test_sample is not None
-    ):
-        new_exp_dir = new_exp_dir / f"{test_sample}"
+    if "Fractional" in cfg.datamodule._target_ and test_sample is not None:
+        new_exp_dir = new_exp_dir / f"test_{test_sample}"
 
     cfg.paths.results_dir.mkdir(parents=True, exist_ok=True)
     assert (
