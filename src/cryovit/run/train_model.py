@@ -14,7 +14,7 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from cryovit.config import BaseExperimentConfig
 from cryovit.models import create_sam_model_from_weights
 from cryovit.types import ModelType
-from cryovit.utils import save_model
+from cryovit.utils import load_model, save_model
 
 torch.set_float32_matmul_precision("high")
 
@@ -33,6 +33,7 @@ def run_training(
     val_labels: list[Path] | None = None,
     num_epochs: int = 50,
     log_training: bool = False,
+    ckpt_path: Path | None = None,
 ) -> Path:
     """Run training on the specified data and labels.
 
@@ -48,6 +49,7 @@ def run_training(
         val_labels (Optional[list[Path]], optional): List of paths to the validation labels. Defaults to None.
         num_epochs (int, optional): Number of training epochs. Defaults to 50.
         log_training (bool, optional): Whether to log training metrics to Tensorboard. Defaults to False.
+        ckpt_path (Optional[Path], optional): Path to a .model file, or .ckpt/.pt file to fine-tune from. Defaults to None.
 
     Returns:
         Path: Path to the saved model file.
@@ -101,13 +103,31 @@ def run_training(
             result_dir / model_name,
         )
     trainer = instantiate(cfg.trainer, callbacks=callbacks, logger=loggers)
-    if cfg.model._target_ == "cryovit.models.sam2.SAM2":
-        # Load SAM2 pre-trained models
-        model = create_sam_model_from_weights(
-            cfg.model, cfg.paths.model_dir / cfg.paths.sam_name
-        )
+
+    if ckpt_path is not None and ckpt_path.suffix == ".model":
+        # Fine-tune from .model file
+        model, _, _, _ = load_model(ckpt_path, load_model=True)
+        assert model is not None
     else:
-        model = instantiate(cfg.model)
+        # Create new model
+        if cfg.model._target_ == "cryovit.models.sam2.SAM2":
+            # Load SAM2 pre-trained models
+            model = create_sam_model_from_weights(
+                cfg.model, cfg.paths.model_dir / cfg.paths.sam_name
+            )
+        else:
+            model = instantiate(cfg.model)
+
+        # Optionally load weights from checkpoint
+        if ckpt_path is not None:
+            if ckpt_path.suffix == ".pt":
+                model.load_state_dict(torch.load(ckpt_path))
+            elif ckpt_path.suffix == ".ckpt":
+                model = model.load_from_checkpoint(ckpt_path)
+            else:
+                raise ValueError(
+                    f"Unsupported checkpoint format: {ckpt_path.suffix}. Use .pt or .ckpt files."
+                )
     logging.info("Loaded model.")
 
     # Base SAM2 only supports image encoder compilation

@@ -73,6 +73,13 @@ def train(
             rich_help_panel="Model Customization",
         ),
     ] = None,
+    ckpt: Annotated[
+        str | None,
+        Option(
+            help="Path to a pre-trained .model file, or .ckpt/.pt weights to fine-tune a model from.",
+            rich_help_panel="Model Customization",
+        ),
+    ] = None,
     num_epochs: Annotated[
         int,
         Option(
@@ -109,6 +116,7 @@ def train(
     ## Convert Arguments
     train_path = Path(train_data)
     label_path = Path(train_labels)
+    ckpt_path = Path(ckpt) if ckpt is not None else None
     val_path = Path(validation_data) if validation_data else None
     val_label_path = Path(validation_labels) if validation_labels else None
     result_path = Path(result_folder) if result_folder else Path.cwd()
@@ -122,6 +130,8 @@ def train(
         assert (
             val_label_path is not None and val_label_path.exists()
         ), "Validation data provided but validation labels path does not exist."
+    if ckpt_path is not None:
+        assert ckpt_path.exists(), "Checkpoint path does not exist."
 
     train_files = load_files_from_path(train_path)
     train_label_files = load_files_from_path(label_path)
@@ -147,4 +157,5 @@ def train(
         val_label_files,
         num_epochs=num_epochs,
         log_training=log_training,
+        ckpt_path=ckpt_path,
     )
