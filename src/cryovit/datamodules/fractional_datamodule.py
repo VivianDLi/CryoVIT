@@ -39,7 +39,7 @@ class FractionalDataModule(BaseDataModule):
         # Add new splits for fractional training
         num_samples = self.record_df.shape[0]
         n_splits = 11  # Using 10-fold + 1 for LOO
-        kf = KFold(n_splits=n_splits, shuffle=True)
+        kf = KFold(n_splits=n_splits, shuffle=True, random_state=42)
         X = np.array([[0] for _ in range(num_samples)])
         splits = [-1 for _ in range(num_samples)]
         for f, (_, test) in enumerate(kf.split(X)):

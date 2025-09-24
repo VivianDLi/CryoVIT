@@ -43,6 +43,7 @@ class Sample(Enum):
     CZI_Campy_C = "Campy C"
     CZI_Campy_CDel = "Campy C-Deletion"
     CZI_Campy_F = "Campy F"
+    CZI_Fibroblast = "Mouse Fibroblast"
 
 
 class ModelType(Enum):
