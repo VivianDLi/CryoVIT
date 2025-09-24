@@ -142,7 +142,7 @@ def _dino_features(
     features = _patch_to_folded(features, B, L)  # B, C2 * ph * pw, L
     features = fold(features) / divisor  # B, C2, ph, pw
     features = features.permute([1, 0, 2, 3]).contiguous()  # C2, D, W, H
-    features = features.cpu().numpy()
+    features = features.half().cpu().numpy()
     return features
 
 
