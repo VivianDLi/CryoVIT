@@ -16,7 +16,6 @@ from rich.progress import track
 
 from cryovit.config import (
     DEFAULT_WINDOW_SIZE,
-    DINO_PATCH_SIZE,
     BaseDataModule,
     DinoFeaturesConfig,
     samples,
@@ -30,32 +29,6 @@ dino_model = (
     "facebookresearch/dinov2",
     "dinov2_vitg14_reg",
 )  # the giant variant of DINOv2
-
-
-def _folded_to_patch(
-    x: torch.Tensor, C: int, window_size: tuple[int, int]
-) -> tuple[torch.Tensor, int, int]:
-    """Convert unfolded tensor to patch features tensor shape."""
-
-    B, _, L = x.shape  # B, C * window_size * window_size, L
-    x = x.permute(0, 2, 1).contiguous()  # B, L, C * window_size * window_size
-    x = x.reshape(
-        -1, C, window_size[0], window_size[1]
-    )  # B * L, C, window_size, window_size
-    return x, B, L
-
-
-def _patch_to_folded(x: torch.Tensor, B: int, L: int) -> torch.Tensor:
-    """Convert patch features tensor to folded tensor shape."""
-
-    x = x.reshape(
-        B, L, x.shape[1], x.shape[2]
-    )  # B, L, window_size * window_size, C2
-    x = x.permute(
-        0, 3, 2, 1
-    ).contiguous()  # B, C2, window_size * window_size, L
-    x = x.reshape(B, -1, L)  # B, C2 * window_size * window_size, L
-    return x
 
 
 @torch.inference_mode()
@@ -76,74 +49,24 @@ def _dino_features(
     Returns:
         NDArray[np.float16]: A numpy array containing the extracted features in reduced precision.
     """
-
-    if window_size is None:
-        window_size = (DEFAULT_WINDOW_SIZE, DEFAULT_WINDOW_SIZE)
-    elif isinstance(window_size, int):
-        window_size = (window_size, window_size)
-    C, H, W = data.shape[1:]
-    ph, pw = (
-        H // DINO_PATCH_SIZE,
-        W // DINO_PATCH_SIZE,
+    data = data.cuda()
+    w, h = (
+        np.array(data.shape[-2:]) // 14
     )  # the number of patches extracted per slice
-    window_size = (min(window_size[0], H), min(window_size[1], W))
-    stride = tuple(
-        (ws // 2) // DINO_PATCH_SIZE * DINO_PATCH_SIZE for ws in window_size
-    )  # 50% overlap, multiple of 14
-    fold = nn.Fold(
-        output_size=(ph, pw),
-        kernel_size=tuple(ws // DINO_PATCH_SIZE for ws in window_size),
-        stride=tuple(s // DINO_PATCH_SIZE for s in stride),
-    )
-    unfold = nn.Unfold(
-        kernel_size=window_size,
-        stride=stride,
-    )
-    # divisor tensor for averaging overlapping patches
-    divisor = torch.ones(1, 1, H, W).cuda()
-    divisor = unfold(divisor)
-    divisor, B, L = _folded_to_patch(divisor, 1, window_size)
-    divisor = F.max_pool2d(
-        divisor, DINO_PATCH_SIZE, stride=DINO_PATCH_SIZE
-    )  # simulate patch extraction
-    divisor = divisor.flatten(2).transpose(1, 2)  # B, L, 1
-    divisor = _patch_to_folded(divisor, B, L)
-    divisor = fold(divisor)
-
-    # Fold data into overlapping windows
-    data = unfold(data)  # B, C * window_size * window_size, L
-    data, B, L = _folded_to_patch(
-        data, C, window_size
-    )  # B * L, C, window_size, window_size
-    # Calculate features in batches
     all_features = []
-    num_batches = (len(data) + batch_size - 1) // batch_size
-    for i, batch_idx in enumerate(range(0, len(data), batch_size)):
+
+    for i in range(0, len(data), batch_size):
         # Check for overflows
-        if batch_idx + batch_size > len(data):
-            batch_size = len(data) - batch_idx
-        logging.debug(
-            "Processing batch %d/%d: %d -> %d",
-            i + 1,
-            num_batches,
-            batch_idx,
-            (batch_idx + batch_size),
-        )
-        vec = data[batch_idx : batch_idx + batch_size].cuda().float()
-        # Convert to RGB by repeating channels
-        if vec.shape[1] == 1:
-            vec = vec.repeat(1, 3, 1, 1)
-        # Extract features for each patch
-        patch_features = model.forward_features(vec)[  # type: ignore
-            "x_norm_patchtokens"
-        ]  # B', ph * pw, C2
-        all_features.append(patch_features.half())
-    features = torch.cat(all_features, dim=0)  # B * L, ph * pw, C2
-    features = _patch_to_folded(features, B, L)  # B, C2 * ph * pw, L
-    features = fold(features) / divisor  # B, C2, ph, pw
-    features = features.permute([1, 0, 2, 3]).contiguous()  # C2, D, W, H
-    features = features.half().cpu().numpy()
-    return features
+        if i + batch_size > len(data):
+            batch_size = len(data) - i
+        vec = data[i : i + batch_size]
+        features = model.forward_features(vec)["x_norm_patchtokens"]  # type: ignore
+        features = features.reshape(features.shape[0], w, h, -1)
+        features = features.permute([3, 0, 1, 2]).contiguous()
+        features = features.to("cpu").half().numpy()
+        all_features.append(features)
+
+    return np.concatenate(all_features, axis=1)  # type: ignore
 
 
 def _save_data(
