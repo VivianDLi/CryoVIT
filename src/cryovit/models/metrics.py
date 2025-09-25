@@ -51,3 +51,43 @@ class DiceMetric(Metric):
         """
 
         return self.dice_score / self.total if self.total > 0 else torch.tensor(0.0)  # type: ignore
+
+
+class F1Metric(Metric):
+    """Metric class for calculating the F1 score to evaluate segmentation models."""
+
+    def __init__(self, **kwargs):
+        """Initializes the F1Metric instance."""
+
+        super().__init__()
+        self.name = "F1Metric"
+        self.add_state("f1", default=torch.tensor(0.0), dist_reduce_fx="sum")
+        self.add_state(
+            "total", default=torch.tensor(0.0), dist_reduce_fx="sum"
+        )
+
+    def update(self, y_pred: Tensor, y_true: Tensor) -> None:
+        """Updates the states for the F1 score computation based on predictions and actual values.
+
+        Args:
+            y_pred (Tensor): Predicted probabilities or logits from the model.
+            y_true (Tensor): Ground truth labels.
+        """
+        y_pred = (y_pred > 0.5).float()
+        tp = torch.sum(y_true * y_pred)
+        fp = torch.sum((1 - y_true) * y_pred)
+        fn = torch.sum(y_true * (1 - y_pred))
+        precision = tp / (tp + fp + 1e-6)
+        recall = tp / (tp + fn + 1e-6)
+        f1 = 2 * (precision * recall) / (precision + recall + 1e-6)
+        self.f1 += f1
+        self.total += 1
+
+    def compute(self) -> Tensor:
+        """Computes the final F1 score over all updates.
+
+        Returns:
+            Tensor: The average F1 score across all batches.
+        """
+
+        return self.f1 / self.total if self.total > 0 else torch.tensor(0.0)  # type: ignore

@@ -206,7 +206,7 @@ class BaseModel(LightningModule, ABC):
         samples, tomo_names = batch.metadata.identifiers
         split_id = batch.metadata.split_id
         labels = [t_labels.cpu().numpy() for t_labels in batch.labels]
-        preds = [t_preds.cpu().numpy() for t_preds in y_pred_full]
+        preds = [t_preds.float().cpu().numpy() for t_preds in y_pred_full]
         if split_id is not None:
             split_id = [s_id.item() for s_id in split_id]
 
@@ -258,7 +258,7 @@ class BaseModel(LightningModule, ABC):
             split_id=None,
             data=input_data,
             label=labels,
-            preds=[t_preds.cpu().numpy() for t_preds in preds],
+            preds=[t_preds.float().cpu().numpy() for t_preds in preds],
             losses={},
             metrics={},
             aux_data=None,

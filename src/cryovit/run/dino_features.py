@@ -1,14 +1,11 @@
 """Functions to load data and run DINOv2 feature extraction."""
 
-import logging
 from pathlib import Path
 
 import h5py
 import numpy as np
 import pandas as pd
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 from hydra import compose, initialize
 from hydra.utils import instantiate
 from numpy.typing import NDArray
