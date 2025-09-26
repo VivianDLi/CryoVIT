@@ -78,6 +78,8 @@ def _plot_df(
         "microtubule": "Microtubules",
         "granule": "Granules",
         "bacteria": "Bacteria",
+        "mito_membrane": "Mitochondrial Membrane",
+        "er_membrane": "ER Membrane",
     }
     new_labels = [
         f"{full_labels[label.get_text()]}\n(n={label_counts[label.get_text()] // num_models})"

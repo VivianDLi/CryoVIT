@@ -64,6 +64,7 @@ experiment_names = {
             "microtubule",
             "granule",
             "bacteria",
+            "mito_membrane",
         ]
     },
     "fractional": {

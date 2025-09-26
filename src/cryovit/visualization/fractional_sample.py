@@ -101,7 +101,7 @@ def _plot_df(
     handles, labels = ax.get_legend_handles_labels()
     plt.legend(handles[:2], labels[:2], loc="lower center", shadow=True)
 
-    plt.tight_layout()
+    plt.tight_layout(rect=(0.01, 0.01, 1.0, 1.0))
     plt.savefig(f"{file_name}{'_line' if not plot_points else ''}.svg")
     plt.savefig(
         f"{file_name}{'_line' if not plot_points else ''}.png", dpi=300
