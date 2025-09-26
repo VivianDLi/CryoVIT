@@ -1,0 +1,21 @@
+# @package _global_
+defaults:
+  - override /datamodule: fractional
+
+name: fractional_${hydra:runtime.choices.model}_mito_membrane
+label_key: mito_membrane
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule.sample:
+        - CZI_Fibroblast
+      datamodule.test_sample:
+        0,1,2,3,4,5,6,7,8,9,10
+      datamodule.split_id:
+        1,2,3,4,5,6,7,8,9,10
+      model:
+        cryovit,unet3d
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun
