@@ -32,14 +32,14 @@ def _plot_df(
     hue_palette = {
         "3D U-Net": colors[0],
         "CryoViT": colors[1],
-        "CryoViT with Sparse Labels": colors[1],
-        "CryoViT with Dense Labels": colors[2],
     }
 
-    fig = plt.figure(figsize=(12, 6))
+    figsize = (20, 6) if "Mito" in title else (10, 6)
+    fig = plt.figure(figsize=figsize)
     ax = plt.gca()
     df["split_id"] = df["split_id"].astype(int)
     label_counts = df["split_id"].value_counts()
+    num_models = df[key].nunique()
 
     params = {
         "x": "split_id",
@@ -84,10 +84,7 @@ def _plot_df(
         ax.set_xticks(df["split_id"].unique())
 
     current_labels = ax.get_xticklabels()
-    new_labels = [
-        f"{label.get_text()}0%\n(n={label_counts[int(label.get_text())]})"
-        for label in current_labels
-    ]
+    new_labels = [f"{label.get_text()}0%" for label in current_labels]
     ax.set_xticks(ax.get_xticks())
     ax.set_xticklabels(new_labels, ha="center")
 
@@ -96,7 +93,9 @@ def _plot_df(
     ax.set_ylabel("")
 
     fig.suptitle(title)
-    fig.supxlabel("Fraction of Training Data")
+    fig.supxlabel(
+        f"Fraction of Training Data\n(n={label_counts[10] // num_models})"
+    )
     fig.supylabel("Dice Score")
 
     handles, labels = ax.get_legend_handles_labels()
@@ -127,40 +126,32 @@ def process_fractional_experiment(
         result_dir (Path): Directory to save the results
     """
 
-    key = "model" if exp_type != "sparse" else "label_type"
-    df = merge_experiments(exp_dir, exp_names, keys=[key])
+    df = merge_experiments(exp_dir, exp_names, keys=["model"])
     test_fn = functools.partial(
         significance_test,
-        model_A=(
-            "CryoViT" if exp_type != "sparse" else "CryoViT with Sparse Labels"
-        ),
-        model_B=(
-            "3D U-Net" if exp_type != "sparse" else "CryoViT with Dense Labels"
-        ),
-        key=key,
+        model_A=("CryoViT"),
+        model_B=("3D U-Net"),
+        key="model",
         test_fn="ttest_rel",
     )
+    full_labels = {
+        "mito": "Mitochondria",
+        "cristae": "Cristae",
+        "microtubule": "Microtubules",
+        "granule": "Granules",
+        "bacteria": "Bacteria",
+    }
     p_values = compute_stats(
         df,
-        group_keys=["split_id", key],
+        group_keys=["split_id", "model"],
         file_name=str(result_dir / f"{label}_{exp_type}_stats.csv"),
         test_fn=test_fn,
     )
-    if exp_type != "sparse":
-        _plot_df(
-            df,
-            p_values,
-            key,
-            f"Model Comparison on All {label.capitalize()} Samples",
-            str(result_dir / f"{label}_{exp_type}_comparison"),
-            plot_points=plot_points,
-        )
-    else:
-        _plot_df(
-            df,
-            p_values,
-            key,
-            "CryoViT: Sparse vs. Dense Labels Comparison on All Samples",
-            str(result_dir / "fractional_sparse_vs_dense_comparison"),
-            plot_points=plot_points,
-        )
+    _plot_df(
+        df,
+        p_values,
+        "model",
+        f"Fractional Model Comparison for {full_labels[label]}",
+        str(result_dir / f"{label}_{exp_type}_comparison"),
+        plot_points=plot_points,
+    )

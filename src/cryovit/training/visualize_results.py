@@ -9,6 +9,7 @@ from cryovit.visualization import (
     process_multi_label_experiment,
     process_samples,
     process_single_experiment,
+    process_sparse_experiment,
 )
 
 setup_logging("INFO")
@@ -22,15 +23,17 @@ model_names = {
 experiment_names = {
     "dino_pca": {},
     "segmentations": {
-        s_group: {m_key: f"single_{s_group}_{m_key}" for m_key in model_names}
-        for s_group in ["ad", "hd"]
+        s_group: {
+            m_key: f"single_{s_group.lower()}_{m_key}" for m_key in model_names
+        }
+        for s_group in ["HD"]
     },
     "single": {
         s_group: {
-            f"single_{s_group}_{m_key}_mito": [m_value]
+            f"single_{s_group.lower()}_{m_key}_mito": [m_value, s_group]
             for m_key, m_value in model_names.items()
         }
-        for s_group in ["ad", "hd", "rgc", "algae"]
+        for s_group in ["AD", "HD", "RGC", "Algae"]
     },
     "multi": {
         s_group: {
@@ -53,7 +56,7 @@ experiment_names = {
         ]
     },
     "multi_label": {
-        f"multi_{m_key}_{s_group}": [m_value, s_group]
+        f"fractional_{m_key}_{s_group}": [m_value, s_group]
         for m_key, m_value in model_names.items()
         for s_group in [
             "mito",
@@ -77,14 +80,13 @@ experiment_names = {
         ]
     },
     "sparse": {
-        "single": {
-            "single_sample_cryovit_mito": ["CryoViT"],
-            "single_sample_cryovit_mito_ai": ["CryoViT"],
-        },
-        "fractional": {
-            "fractional_sample_cryovit_mito": ["Sparse"],
-            "fractional_sample_cryovit_mito_ai": ["Dense"],
-        },
+        s_group: {
+            f"fractional_cryovit_mito_{s_label.lower()}": [
+                f"CryoViT with {s_label} Labels"
+            ]
+            for s_label in ["Sparse", "Dense"]
+        }
+        for s_group in ["single", "fractional"]
     },
 }
 
@@ -135,10 +137,11 @@ if __name__ == "__main__":
     assert (
         exp_dir.exists() and exp_dir.is_dir()
     ), "Experiment directory does not exist or is not a directory."
-    if args.exp_group is not None:
+    if args.exp_group is not None and args.exp_type != "dino_pca":
         assert (
             args.exp_group in experiment_names[args.exp_type]
         ), f"Experiment group {args.exp_group} not found in experiment type {args.exp_type}. Available groups: {list(experiment_names[args.exp_type].keys())}"
+
     exp_group = (
         [args.exp_group]
         if args.exp_group
@@ -147,51 +150,59 @@ if __name__ == "__main__":
 
     exp_names = {}
     for group in exp_group:
-        exp_names[group] = experiment_names[args.exp_type][group]
+        if group in experiment_names[args.exp_type]:
+            exp_names[group] = experiment_names[args.exp_type][group]
 
-    if args.exp_type == "dino_pca":
-        process_samples(exp_dir, result_dir)
-    elif args.exp_type == "segmentations":
-        for group in exp_group:
-            for model in exp_names[group]:
-                process_experiment(
+    match args.exp_type:
+        case "dino_pca":
+            process_samples(exp_dir, result_dir, sample=args.exp_group)
+        case "segmentations":
+            for group in exp_group:
+                for model in exp_names[group]:
+                    process_experiment(
+                        exp_dir,
+                        result_dir,
+                        exp_template=exp_names[group][model],
+                        labels=args.labels,
+                    )
+        case "single":
+            process_single_experiment(
+                args.exp_type, "all", exp_names, exp_dir, result_dir
+            )
+        case "multi":
+            for group, model_and_names in exp_names.items():
+                combined_names = {}
+                for names in model_and_names.values():
+                    combined_names.update(names)
+                process_multi_experiment(
+                    args.exp_type, group, combined_names, exp_dir, result_dir
+                )
+        case "multi_label":
+            process_multi_label_experiment(
+                args.exp_type, exp_names, exp_dir, result_dir
+            )
+        case "fractional":
+            for label, names in exp_names.items():
+                process_fractional_experiment(
+                    args.exp_type,
+                    label,
+                    names,
                     exp_dir,
                     result_dir,
-                    exp_template=exp_names[group][model],
-                    labels=args.labels,
+                    plot_points=True,
                 )
-    elif args.exp_type == "multi":
-        for group, model_and_names in exp_names.items():
-            combined_names = {}
-            for names in model_and_names.values():
-                combined_names.update(names)
-            process_multi_experiment(
-                args.exp_type, group, combined_names, exp_dir, result_dir
-            )
-    elif args.exp_type == "multi_label":
-        process_multi_label_experiment(
-            args.exp_type, exp_names, exp_dir, result_dir
-        )
-    elif args.exp_type == "fractional":
-        for label, names in exp_names.items():
-            process_fractional_experiment(
-                args.exp_type, label, names, exp_dir, result_dir
-            )
-    elif args.exp_type == "sparse":
-        for sample_type, names in exp_names.items():
-            if sample_type == "single":
-                process_single_experiment(
-                    args.exp_type, "hd", names, exp_dir, result_dir
-                )
-            elif sample_type == "fractional":
                 process_fractional_experiment(
-                    args.exp_type, "hd", names, exp_dir, result_dir
+                    args.exp_type,
+                    label,
+                    names,
+                    exp_dir,
+                    result_dir,
+                    plot_points=False,
                 )
-            else:
-                logging.warning("Unknown sample type: %s", sample_type)
-                continue
-    else:
-        for group, names in exp_names.items():
-            process_single_experiment(
-                args.exp_type, group, names, exp_dir, result_dir
-            )
+        case "sparse":
+            for group, names in exp_names.items():
+                process_sparse_experiment(
+                    args.exp_type, group, names, exp_dir, result_dir
+                )
+        case _:
+            logging.error("Unknown experiment type: %s", args.exp_type)

@@ -21,7 +21,7 @@ def _calculate_pca(features: NDArray[np.float16]) -> NDArray[np.float32]:
     x = float_features.transpose((1, 2, 3, 0))
     x = x.reshape((-1, x.shape[-1]))  # N, C
     # Reduce dimensionality to 3 colors
-    pca = PCA(n_components=1024)
+    pca = PCA(n_components=min(1024, x.shape[0]))
     x = pca.fit_transform(x)
     umap = UMAP(n_components=3, verbose=False, n_jobs=16)
     umap.fit(x)
@@ -79,18 +79,16 @@ def export_pca(
         idxs = list(np.arange(0, data.shape[0], step=10, dtype=int))
     else:
         idxs = [frame_id]
-    for idx in idxs:  # type: ignore
+    np_features = features[:, idxs]
+    np_features = _calculate_pca(np_features)
+    np_features = _color_features(np_features)
+    for i, idx in enumerate(idxs):  # type: ignore
         img_path = image_dir / f"{idx}.png"
-
-        # Calculate PCA and color separately per slice
-        np_features = features[:, [idx]]
-        np_features = _calculate_pca(np_features)
-        np_features = _color_features(np_features)
 
         data = data - data.min()
         data = data / data.max()
         int_data = (data * 255.0).astype(np.uint8)
-        f_img = Image.fromarray(np_features[0][::-1])
+        f_img = Image.fromarray(np_features[i][::-1])
         d_img = Image.fromarray(int_data[idx][::-1])
 
         img = Image.new(
@@ -102,11 +100,17 @@ def export_pca(
         img.save(img_path)
 
 
-def process_samples(exp_dir: Path, result_dir: Path):
+def process_samples(
+    exp_dir: Path, result_dir: Path, sample: str | None = None
+):
     """Process all samples in an experiment directory and save PCA visualizations."""
 
     result_dir.mkdir(parents=True, exist_ok=True)
-    samples = [s.name for s in exp_dir.iterdir() if s.is_dir()]
+    samples = (
+        [s.name for s in exp_dir.iterdir() if s.is_dir()]
+        if sample is None
+        else [sample]
+    )
     logging.info(
         "Found %d samples in experiment directory %s: %s",
         len(samples),

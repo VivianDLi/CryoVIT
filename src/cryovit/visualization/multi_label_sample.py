@@ -35,9 +35,8 @@ def _plot_df(
 
     label_counts = df["label"].value_counts()
     num_models = df[key].nunique()
-    n_samples = df["label"].nunique()
     sorted_labels = label_counts.sort_values(ascending=True).index.tolist()
-    fig = plt.figure(figsize=(12 if n_samples > 6 else 6, 6))
+    fig = plt.figure(figsize=(20, 6))
     ax = plt.gca()
 
     params = {
@@ -98,7 +97,7 @@ def _plot_df(
     handles, labels = ax.get_legend_handles_labels()
     plt.legend(handles[:2], labels[:2], loc="lower center", shadow=True)
 
-    plt.tight_layout()
+    plt.tight_layout(rect=(0.01, 0.01, 1.0, 1.0))
     plt.savefig(f"{file_name}.svg")
     plt.savefig(f"{file_name}.png", dpi=300)
 
@@ -120,12 +119,13 @@ def process_multi_label_experiment(
 
     result_dir.mkdir(parents=True, exist_ok=True)
     df = merge_experiments(exp_dir, exp_names, keys=["model", "label"])
+    df = df[df["split_id"] == 10]  # Use data from 100% of training data
     test_fn = functools.partial(
         significance_test,
         model_A="CryoViT",
         model_B="3D U-Net",
         key="model",
-        test_fn="wilcoxon",
+        test_fn="ttest_rel",
     )
     p_values = compute_stats(
         df,
@@ -138,6 +138,6 @@ def process_multi_label_experiment(
         df,
         p_values,
         "model",
-        "Model Comparison on All Samples for each Label",
+        "Model Comparison on All Samples",
         str(result_dir / f"{exp_type}_comparison"),
     )

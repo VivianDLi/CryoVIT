@@ -18,7 +18,7 @@ group_names = {
     "old": "Aged",
     "young": "Young",
     "neuron": "Neurons",
-    "fibro_cancer": "Fibroblasts and Cancer Cells",
+    "fibro_cancer": "Fibroblast/Cancer Cells",
 }
 
 
@@ -43,7 +43,7 @@ def _plot_df(
     }
 
     sample_counts = df["sample"].value_counts()
-    num_models = df["model"].nunique()
+    num_models = df[key].nunique()
     sorted_samples = sample_counts.sort_values(ascending=True).index.tolist()
 
     params = {
@@ -58,7 +58,6 @@ def _plot_df(
         showfliers=False,
         palette=hue_palette,
         linewidth=1,
-        width=0.6,
         medianprops={"linewidth": 2, "color": "firebrick"},
         ax=ax,
         **params,
@@ -88,7 +87,7 @@ def _plot_df(
     ax.set_ylim(-0.05, 1.15)
     ax.set_title(title)
     ax.set_xlabel("")
-    ax.set_ylabel("Dice Score")
+    ax.set_ylabel("")
     ax.set_xticks(range(len(new_labels)))
     ax.set_xticklabels(new_labels, ha="center")
 
@@ -114,7 +113,10 @@ def process_multi_experiment(
     """
 
     import matplotlib.pyplot as plt
+    import seaborn as sns
     from matplotlib.gridspec import GridSpec
+
+    sns.set_theme(style="darkgrid", font="Open Sans")
 
     result_dir.mkdir(parents=True, exist_ok=True)
     df = merge_experiments(exp_dir, exp_names, keys=["model", "type"])
@@ -124,7 +126,7 @@ def process_multi_experiment(
     s1_count = forward_df["sample"].nunique()
     s2_count = backward_df["sample"].nunique()
 
-    fig = plt.figure(figsize=(12 if s1_count + s2_count > 6 else 6, 6))
+    fig = plt.figure(figsize=(20, 6))
     gs = GridSpec(
         1, 2, width_ratios=[s1_count, s2_count]
     )  # Set width ratios based on unique sample counts
@@ -172,13 +174,18 @@ def process_multi_experiment(
     _plot_df(backward_df, p_values, "model", title, ax2)
 
     # Adjust layout and save the figure
-    fig.suptitle(
-        f"Model Comparison Across {group_names[exp_group[0]]}/{group_names[exp_group[1]]} Domain Shifts"
-    )
+    if (
+        "Cells" in group_names[exp_group[0]]
+        or "Cells" in group_names[exp_group[1]]
+    ):
+        domain = "Cell Type"
+    else:
+        domain = "Diseased/Healthy"
+    fig.suptitle(f"Model Comparison Across {domain} Domain Shifts")
     fig.supxlabel("Sample Name (Count)")
     fig.supylabel("Dice Score")
 
-    plt.tight_layout()
+    plt.tight_layout(rect=(0.01, 0.01, 1.0, 1.0))
     plt.savefig(result_dir / f"{exp_group[0]}_{exp_group[1]}_domain_shift.svg")
     plt.savefig(
         result_dir / f"{exp_group[0]}_{exp_group[1]}_domain_shift.png", dpi=300

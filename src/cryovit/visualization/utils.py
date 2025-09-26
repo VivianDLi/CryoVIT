@@ -72,10 +72,10 @@ def significance_test(
 
     if test_fn == "wilcoxon":
         _, pvalue = wilcoxon(
-            score_A, score_B, method="exact", alternative="greater"
+            score_A, score_B, method="exact", alternative="two-sided"
         )
     elif test_fn == "ttest_rel":
-        _, pvalue = ttest_rel(score_A, score_B, alternative="greater")
+        _, pvalue = ttest_rel(score_A, score_B, alternative="two-sided")
     else:
         raise ValueError(f"Unknown test function: {test_fn}")
 

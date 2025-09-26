@@ -7,6 +7,9 @@ if [ "$#" -ne 3 ]; then
 fi
 
 case $2 in
+    "mito")
+        exp_name="fractional_mito"
+        ;;
     "microtubule")
         exp_name="fractional_microtubule"
         ;;
