@@ -20,7 +20,7 @@ More details can be found in the `preprint`_, and
 you can check out the `source code`_ for implementation details.
 
 .. _preprint: https://www.biorxiv.org/content/10.1101/2024.06.26.600701v1
-.. _source code: https://github.com/VivianDLi/CryoVIT
+.. _source code: https://github.com/sanketx/CryoVIT
 
 .. hint::
    - If you already have a dataset, and just want to get it segmented using one of the provided pre-trained models, check out the :ref:`quick start guide <quick start guide>`.
@@ -31,7 +31,7 @@ you can check out the `source code`_ for implementation details.
 
    - If you run into any issues, check out :ref:`the help section <debugging issues>` to see if your issue has already been addressed.
 
-.. _GitHub repository: https://github.com/VivianDLi/CryoVIT
+.. _GitHub repository: https://github.com/sanketx/CryoVIT
 
 =================================================
 Getting Started

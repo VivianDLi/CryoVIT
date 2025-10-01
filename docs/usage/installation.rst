@@ -58,13 +58,13 @@ You can install CryoViT directly from a clone of the `Git repository`_.
 This requires having `git`_ installed on your system, as well as a conda-based
 Python distribution such as `miniforge`_.
 
-.. _Git repository: https://github.com/VivianDLi/CryoVIT
+.. _Git repository: https://github.com/sanketx/CryoVIT
 .. _git: https://git-scm.com/downloads
 .. _miniforge: https://github.com/conda-forge/miniforge
 
 First, clone the repository: ::
 
-    $ git clone https://github.com/VivianDLi/CryoVIT.git
+    $ git clone https://github.com/sanketx/CryoVIT.git
     $ cd CryoVIT
 
 Next, create a conda environment based on the provided environment file: ::
