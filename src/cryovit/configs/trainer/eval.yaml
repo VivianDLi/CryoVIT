@@ -1,0 +1,7 @@
+enable_model_summary: False
+enable_checkpointing: False
+
+#### DO NOT CHANGE ####
+defaults:
+  - base_trainer
+  - _self_

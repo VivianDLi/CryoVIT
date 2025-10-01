@@ -1,0 +1,18 @@
+# Path to the DINOv2 foundation model
+dino_dir: ${paths.model_dir}/${paths.dino_name}
+
+# Sample to vectorize using DINOv2 (all samples)
+sample: null
+
+# Export DINOv2 features with PCA
+export_features: False
+
+#################### Do not modify #####################
+
+defaults:
+  - paths: default
+  - datamodule: dino
+  - dino_features_config
+  - _self_
+  - override hydra/hydra_logging: rich_logger
+  - override hydra/job_logging: rich_logger

@@ -5,17 +5,30 @@ split_id=$2
 model=$3
 label_key=$4
 
-env_dir=/tmp/$USER/"$(uuidgen)"
-mkdir -p $env_dir
-tar -xf ~/projects/libs/cryovit_env.tar -C $env_dir
+# Setup W&B API key
+if [ -z "$WANDB_API_KEY" ]; then
+    export WANDB_API_KEY=$5
+fi
+
+env_dir=/sdf/home/v/vdl21/projects/libs/
+
+export CONDA_PREFIX="${env_dir}/cryovit_env"
+export TORCHINDUCTOR_FORCE_DISABLE_CACHES=1
 
 $env_dir/cryovit_env/bin/python -m \
-    cryovit.train_model \
+    cryovit.training.train_model \
     model=$model \
+    name="fractional_${model}_${label_key}" \
     label_key=$label_key \
-    exp_name="fractional_sample_${model}_${label_key}" \
-    dataset=fractional \
-    dataset.sample=$sample \
-    dataset.split_id=$split_id
+    datamodule=fractional_loo \
+    datamodule.sample=$sample \
+    datamodule.split_id=$split_id
 
-rm -rf $env_dir
+$env_dir/cryovit_env/bin/python -m \
+    cryovit.training.eval_model \
+    model=$model \
+    name="fractional_${model}_${label_key}" \
+    label_key=$label_key \
+    datamodule=fractional_loo \
+    datamodule.sample=$sample \
+    datamodule.split_id=$split_id

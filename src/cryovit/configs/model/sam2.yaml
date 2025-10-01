@@ -1,0 +1,7 @@
+name: SAM2
+
+#### DO NOT CHANGE ####
+
+defaults:
+  - default_sam
+  - _self_

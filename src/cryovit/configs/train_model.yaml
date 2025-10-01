@@ -1,0 +1,20 @@
+name: ${hydra:runtime.choices.datamodule}_any_${hydra:runtime.choices.model}_${label_key}
+label_key: ???
+random_seed: 42
+
+#################### Do not modify #####################
+
+defaults:
+  - paths: default
+  - model: ???
+  - trainer: fit
+  - callbacks:
+    - rich_progress_bar
+    - stochastic_weight_average
+  - logger:
+    - wandb
+  - datamodule: ???
+  - base_experiment_config
+  - _self_
+  - override hydra/hydra_logging: rich_logger
+  - override hydra/job_logging: rich_logger

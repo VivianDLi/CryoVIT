@@ -1,0 +1,24 @@
+# @package _global_
+name: ${hydra:runtime.choices.model}_test_mito
+label_key: mito
+
+datamodule:
+  dataloader:
+    batch_size: 1
+
+trainer:
+  max_epochs: 50
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule: single
+      datamodule.sample:
+        BACHD,AD,RGC_CM
+      datamodule.split_id: 0,5
+      model: medsam,sam2
+      model.lr: 1e-4,5e-5,1e-5
+      model.custom_kwargs.prompt_lr: 1e-4,3e-5,1e-5
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun

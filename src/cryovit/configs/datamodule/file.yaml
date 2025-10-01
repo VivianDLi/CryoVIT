@@ -1,0 +1,9 @@
+_target_: cryovit.datamodules.FileDataModule
+_partial_: true
+
+#### DO NOT MODIFY ####
+
+defaults:
+  - dataset: file
+  - dataloader: default
+  - _self_

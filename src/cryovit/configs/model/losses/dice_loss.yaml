@@ -1,0 +1,2 @@
+dice_loss:
+  _target_: cryovit.models.losses.DiceLoss

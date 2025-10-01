@@ -1,0 +1,9 @@
+#### DO NOT CHANGE ####
+
+defaults:
+  - losses:
+    - dice_loss
+  - metrics:
+    - dice_metric
+    - f1_metric
+  - base_model

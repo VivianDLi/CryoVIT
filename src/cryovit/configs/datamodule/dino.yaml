@@ -1,0 +1,11 @@
+dataloader:
+  num_workers: 0
+  prefetch_factor: null
+  batch_size: null
+
+#### DO NOT MODIFY ####
+
+defaults:
+  - dataset: vit
+  - dataloader: default
+  - _self_

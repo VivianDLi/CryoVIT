@@ -1,0 +1,9 @@
+wandb:
+  _target_: pytorch_lightning.loggers.wandb.WandbLogger
+  _convert_: all
+  save_dir: ${paths.exp_dir}
+  entity: chiulab
+  project: CryoVIT
+  group: ${name}
+  log_model: False
+  config: {}

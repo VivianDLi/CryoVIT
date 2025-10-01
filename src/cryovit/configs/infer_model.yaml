@@ -1,0 +1,17 @@
+name: ${hydra:runtime.choices.datamodule}_any_${hydra:runtime.choices.model}_${label_key}
+label_key: ???
+
+logger: {}
+
+#################### Do not modify #####################
+
+defaults:
+  - paths: default
+  - model: ???
+  - trainer: eval
+  - callbacks:
+    - rich_progress_bar
+  - datamodule: file
+  - _self_
+  - override hydra/hydra_logging: rich_logger
+  - override hydra/job_logging: rich_logger

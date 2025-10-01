@@ -1,0 +1,20 @@
+# @package _global_
+defaults:
+  - override /datamodule: single
+
+name: single_fibro_${hydra:runtime.choices.model}_${label_key}
+datamodule:
+  sample: CZI_Fibroblast
+
+hydra:
+  mode: MULTIRUN
+  sweeper:
+    params:
+      datamodule.split_id:
+        0,1,2,3,4,5,6,7,8,9
+      model:
+        cryovit,unet3d
+      label_key:
+        mito_membrane,er_membrane
+  sweep:
+    dir: /tmp/${oc.env:USER}/multirun

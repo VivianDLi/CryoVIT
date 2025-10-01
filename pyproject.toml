@@ -1,8 +1,145 @@
-[tool.black]
-line-length = 88
-target-version = ["py310"]
+[project]
+name = "cryovit"
+dynamic = ["version"]
+description = "Deep learning automated segmentation models using high-level features from foundation ViT models."
+readme = "README.md"
+license = {file = "LICENSE"}
+authors = [
+  {name = "Vivian Li", email = "vdl21@cantab.ac.uk"},
+  {name = "Sanket Rajan Gupte", email = "sanketg@stanford.edu"}
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering :: Image Processing",
+]
+requires-python = ">=3.10"
+dependencies = [
+    "numpy==2.2.6",
+    "scipy==1.15.2",
+    "pandas==2.3.1",
+    "scikit-learn==1.3.2",
+    "h5py==3.14.0",
+    "mrcfile==1.5.4",
+    "tifffile==2025.5.10",
+    "rich==14.0.0",
+    "torch==2.7.1",
+    "torchvision==0.22.0",
+    "torchmetrics==1.8.0",
+    "pytorch-lightning==2.5.2",
+    "xformers==0.0.31",
+    "sam2==1.0.0",
+    "tensordict==0.9.1",
+    "hydra-core==1.3.2",
+    "mkl==2024.2.0",
+    "typer",
+]
 
-[tool.isort]
-profile = "black"
-force_single_line = true
-lines_after_imports = 2
+# optionals
+[project.optional-dependencies]
+dev = [
+    "wandb>=0.21.0",
+    "huggingface_hub>=0.34.3",
+    "opencv>=4.12.0",
+    "scikit-learn>=1.3.2",
+    "umap-learn>=0.5.9",
+    "matplotlib>=3.10.5",
+    "seaborn>=0.13.2",
+    "mypy>=1.17.0"
+]
+
+[project.scripts]
+cryovit = "cryovit.cli:cli"
+
+[dependency-groups]
+testing = [
+    "tox",
+    "pytest",  # https://docs.pytest.org/en/latest/contents.html
+    "pytest-cov",  # https://pytest-cov.readthedocs.io/en/latest/
+]
+docs = [
+    "sphinx",
+    "sphinx-rtd-theme",
+    "doc8",
+]
+
+[build-system]
+requires = ["setuptools>=42.0.0", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"*" = ["cryovit/configs/**/*.yaml"]
+
+[tool.setuptools_scm]
+write_to = "src/cryovit/_version.py"
+fallback_version = "0.0.1+nogit"
+
+[tool.black]
+line-length = 79
+target-version = ['py310', 'py311', 'py312', 'py313']
+
+[tool.ruff]
+line-length = 79
+lint.select = [
+    "E", "F", "W", #flake8
+    "UP", # pyupgrade
+    "I", # isort
+    "BLE", # flake8-blind-exception
+    "B", # flake8-bugbear
+    "A", # flake8-builtins
+    "C4", # flake8-comprehensions
+    "ISC", # flake8-implicit-str-concat
+    "G", # flake8-logging-format
+    "PIE", # flake8-pie
+    "SIM", # flake8-simplify
+]
+lint.ignore = [
+    "E501", # line too long. let black handle this
+    "UP006", "UP007", # type annotation. As using magicgui require runtime type annotation then we disable this.
+]
+exclude = [
+    ".bzr",
+    ".direnv",
+    ".eggs",
+    ".git",
+    ".mypy_cache",
+    ".pants.d",
+    ".ruff_cache",
+    ".svn",
+    ".tox",
+    ".venv",
+    "__pypackages__",
+    "_build",
+    "buck-out",
+    "build",
+    "dist",
+    "node_modules",
+    "venv",
+    "*vendored*",
+    "*_vendor*",
+]
+fix = true
+
+[tool.doc8]
+ignore_path = [
+    "docs/_build",
+    "docs/_modules",
+]
+
+[tool.esbonio.sphinx]
+pythonCommand = ["/home/vivian/miniforge3/envs/cryovit_env/bin/python"] # path to the python interpreter in environment

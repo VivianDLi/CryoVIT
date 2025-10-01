@@ -1,0 +1,19 @@
+# @package _global_
+defaults:
+  - override /model: cryovit
+  - override /datamodule: multi
+
+name: hd_to_healthy_${hydra:runtime.choices.model}_mito
+label_key: mito
+
+datamodule:
+  sample:
+    - Q109
+    - Q53
+    - Q66
+    - BACHD
+    - dN17_BACHD
+  test_sample:
+    - Q18
+    - Q20
+    - WT

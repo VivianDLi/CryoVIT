@@ -1,0 +1,7 @@
+name: MedSAM
+
+#### DO NOT CHANGE ####
+
+defaults:
+  - default_sam
+  - _self_
