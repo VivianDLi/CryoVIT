@@ -184,7 +184,7 @@ class PromptPredictor(nn.Module):
                     channel_mults[i] * hidden_channels,
                     scale=layer_scale,
                 )
-                for i in range(0, depth, -1)
+                for i in reversed(range(depth))
             ]
         )
 
