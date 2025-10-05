@@ -95,10 +95,10 @@ class SAM2(BaseModel):
     ) -> dict[str, Tensor]:
         """Override trainer _masked_predict to handle masking for the prompt predictor."""
 
-        out = self(batch)
         y_true = batch.labels  # (B, D, H, W)
-        y_pred_full, mask_pred_full = out["preds"], out["prompts"]
 
+        out = self(batch)
+        y_pred_full, mask_pred_full = out["preds"], out["prompts"]
         mask = (y_true > -1.0).detach()
         if use_mito_mask:
             assert (
@@ -130,13 +130,15 @@ class SAM2(BaseModel):
         """Override trainer do_step to handle losses for the prompt predictor."""
 
         out_dict = self._masked_predict(batch)
-
-        y_pred, y_true = out_dict["preds"], out_dict["labels"]
+        y_pred, y_true, masks = (
+            out_dict["preds"],
+            out_dict["labels"],
+            out_dict["masks"],
+        )
 
         losses = self.compute_losses(y_pred, y_true)
-        mask_loss = self.compute_losses(out_dict["masks"], y_true)["dice_loss"]
+        mask_loss = self.compute_losses(masks, y_true)["dice_loss"]
         losses["mask_loss"] = mask_loss
-        losses["total"] = losses["total"] + mask_loss
 
         for _, m_fn in self.metric_fns[prefix.upper()].items():  # type: ignore
             m_fn(y_pred, y_true)
@@ -208,22 +210,7 @@ class SAM2(BaseModel):
                 align_corners=False,
             )
 
-        flat_tensor = data.flat_tomo_batch  # [BxDxCxHxW] -> [[BxD]xCxHxW]
-        backbone_out = self.model.image_encoder(flat_tensor)
-        flat_box_prompts, flat_mask_prompts = self.prompt_predictor(
-            backbone_out["backbone_fpn"][0], num_batches=data.num_tomos
-        )  # flat tensor form
-        binary_flat_mask_prompts = (
-            flat_mask_prompts > 0.9
-        ).bool()  # binarize the mask prompts for SAM2 input conservatively
-        preds = self.model(
-            data, flat_box_prompts, binary_flat_mask_prompts
-        )  # forward pass through SAM2
-        masks = flat_mask_prompts.view(
-            data.num_tomos, data.num_slices, *flat_mask_prompts.shape[-2:]
-        )  # reshape to [B, D, H, W]
-
-        out = {"preds": preds, "prompts": masks}
+        out = self.model(data)  # forward pass through SAM
 
         # Pad outputs if truncated
         if do_truncate:
@@ -299,30 +286,19 @@ class SAM2Train(SAM2Base):
         )  # Using alpha=r
         self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
-    def forward(
-        self, data: BatchedTomogramData, box_prompts, mask_prompts  # type: ignore
-    ) -> dict[str, Any] | Tensor:
+    def forward(self, data: BatchedTomogramData) -> dict[str, Any] | Tensor:  # type: ignore
         """Forward pass for the SAMv2 model."""
 
         backbone_out = self.forward_image(data.flat_tomo_batch)
-        mid_slice_idx = data.num_slices // 2
-        backbone_out = self.prepare_prompt_inputs(
-            backbone_out,
-            box_prompts,
-            mask_prompts,
-            data,
-            start_slice_idx=mid_slice_idx,
-        )
+        backbone_out = self.prepare_prompt_inputs(backbone_out, data)
         out = self.forward_tracking(backbone_out, data)
-        if not isinstance(out, dict):
+        if not isinstance(out, dict):  # if returning predictions
             out = torch.sigmoid(out)
-        return out
+        return {"preds": out, "prompts": backbone_out["prompts"]}
 
     def prepare_prompt_inputs(
         self,
         backbone_out: dict[str, Any],
-        box_prompts: dict[str, Any],
-        mask_prompts: dict[str, Any],
         data: BatchedTomogramData,  # type: ignore
         start_slice_idx: int = 0,
     ) -> dict[str, Any]:
@@ -359,10 +335,19 @@ class SAM2Train(SAM2Base):
             n for n in range(data.num_slices) if n not in init_cond_slices
         ]
 
-        # Prepare mask and box inputs for slices
+        # Run the prompt predictor to get box and mask prompts
+        box_prompts, mask_prompts = self.prompt_predictor(  # type: ignore
+            backbone_out["backbone_fpn"][0], num_batches=data.num_tomos
+        )  # flat tensor form
+        # Save predicted prompts for debugging/visualization
+        backbone_out["prompts"] = mask_prompts.view(
+            data.num_tomos, data.num_slices, *mask_prompts.shape[-2:]
+        ).detach()  # reshape to [B, D, H, W]
+
+        # Prepare mask and box inputs for all slices
         backbone_out["box_inputs_per_slice"] = {}
         backbone_out["mask_inputs_per_slice"] = {}
-        for n in init_cond_slices:
+        for n in range(data.num_slices):
             idxs = data.index_to_flat_batch(n)
             backbone_out["box_inputs_per_slice"][n] = (
                 box_prompts[idxs] * self.sam_prompt_encoder.input_image_size[0]
@@ -414,7 +399,7 @@ class SAM2Train(SAM2Base):
                 feat_sizes=feat_sizes,
                 point_inputs=backbone_out["box_inputs_per_slice"].get(
                     slice_id, None
-                ),
+                ),  # point inputs are actually box inputs
                 mask_inputs=backbone_out["mask_inputs_per_slice"].get(
                     slice_id, None
                 ),
