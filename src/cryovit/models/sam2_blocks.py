@@ -1,6 +1,6 @@
 """3D U-Net-based prompt predictor for SAM2 using image encodings and LoRA adaptation modules.
 
-Prompt predictor architecture is based on the prompt predictor in https://github.com/ChengyinLee/AutoProSAM_2024/ and https://github.com/MIC-DKFZ/nnUNet.
+Prompt predictor architecture is based on the prompt encoder U-Net in https://github.com/ChengyinLee/AutoProSAM_2024/.
 """
 
 import numpy as np
@@ -12,42 +12,85 @@ from torch import Tensor
 
 
 class PromptConvBlock(nn.Module):
-    """A convolutional block used in the prompt predictor."""
+    """A basic convolutional block used in the prompt predictor."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        k_size: int = 3,
+        stride: int = 1,
+        padding: int = 1,
+        dilation: int = 1,
+        bias: bool = False,
+        norm=nn.InstanceNorm3d,
+        act=nn.GELU,
+        preact: bool = False,
+    ):
+        super().__init__()
+        self.conv = nn.Conv3d(
+            in_channels,
+            out_channels,
+            kernel_size=k_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            bias=bias,
+        )
+        self.norm = (
+            norm(in_channels if preact else out_channels)
+            if norm
+            else nn.Identity()
+        )
+        self.act = act() if act else nn.Identity()
+        self.preact = preact
+
+    def forward(self, x: Tensor) -> Tensor:
+        if self.preact:
+            x = self.act(self.norm(x))
+        x = self.conv(x)
+        if not self.preact:
+            x = self.act(self.norm(x))
+        return x
+
+
+class PromptInConv(nn.Module):
+    """The input convolutional block used in the prompt predictor."""
 
     def __init__(self, in_channels: int, out_channels: int):
         super().__init__()
         self.layers = nn.Sequential(
-            nn.Conv3d(
-                in_channels, out_channels, kernel_size=3, padding="same"
-            ),
-            nn.InstanceNorm3d(out_channels, eps=1e-3, affine=True),
-            nn.GELU(),
-            nn.Conv3d(
-                out_channels, out_channels, kernel_size=3, padding="same"
-            ),
-            nn.InstanceNorm3d(out_channels, eps=1e-3, affine=True),
-            nn.GELU(),
+            PromptConvBlock(in_channels, out_channels),
+            PromptConvBlock(out_channels, out_channels),
         )
 
     def forward(self, x: Tensor) -> Tensor:
         return self.layers(x)
 
 
-class PromptAnalysisBlock(nn.Module):
+class PromptDownBlock(nn.Module):
     """A single block in the down-sampling UNet architecture for prompt prediction."""
 
-    def __init__(self, in_channels: int, out_channels: int, scale: int = 2):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        n_blocks: int = 2,
+        scale: int = 2,
+    ):
         super().__init__()
-        self.layers = nn.Sequential(
-            nn.MaxPool3d(scale),
-            PromptConvBlock(in_channels, out_channels),
-        )
+        block_list = []
+        block_list.append(nn.MaxPool3d(scale))
+        for _ in range(n_blocks):
+            block_list.append(PromptConvBlock(in_channels, out_channels))
+            in_channels = out_channels
+        self.layers = nn.Sequential(*block_list)
 
     def forward(self, x: Tensor) -> Tensor:
         return self.layers(x)
 
 
-class PromptSynthesisBlock(nn.Module):
+class PromptUpBlock(nn.Module):
     """A single block in the up-sampling UNet architecture for prompt prediction."""
 
     def __init__(
@@ -55,24 +98,23 @@ class PromptSynthesisBlock(nn.Module):
         in_channels: int,
         skip_channels: int,
         out_channels: int,
+        n_blocks: int = 2,
         scale: int = 2,
     ):
         super().__init__()
-        self.upconv = nn.ConvTranspose3d(
-            in_channels, in_channels, kernel_size=scale, stride=scale
-        )
-        self.layers = nn.Sequential(
-            PromptConvBlock(in_channels + skip_channels, out_channels),
-            PromptConvBlock(out_channels, out_channels),
-        )
+        block_list = [
+            PromptConvBlock(in_channels + skip_channels, out_channels)
+        ]
+        for _ in range(n_blocks - 1):
+            block_list.append(PromptConvBlock(out_channels, out_channels))
+        self.layers = nn.Sequential(*block_list)
         self.scale = scale
 
     def forward(self, x: Tensor, skip_x: Tensor) -> Tensor:
-        x = self.upconv(x)
         x = F.interpolate(
             x, size=skip_x.shape[-3:], mode="trilinear", align_corners=True
         )  # handle size mismatches
-        x = torch.cat([x, skip_x], dim=1)
+        x = torch.cat([skip_x, x], dim=1)
         x = self.layers(x)
         return x
 
@@ -107,46 +149,52 @@ class PromptPredictor(nn.Module):
     def __init__(
         self,
         in_channels: int = 256,
-        depth: int = 3,
+        hidden_channels: int = 16,
+        depth: int = 4,
         layer_scale: int = 2,
-        channel_dims: list[int] | None = None,
+        channel_mults: list[int] | None = None,
     ):
-        if channel_dims is None:
-            channel_dims = [64, 128, 256]
+        if channel_mults is None:
+            channel_mults = [1, 2, 4, 8, 10]
         super().__init__()
-        assert depth == len(
-            channel_dims
-        ), "Depth must match the length of channel_dims"
+        assert depth + 1 == len(
+            channel_mults
+        ), "Depth must match the length of channel multipliers - 1"
         self.scale_factor = 4  # Scale factor for mask prediction
         # Original SAM2 has 4x patch embedding
 
-        self.init_conv = PromptConvBlock(in_channels, channel_dims[0])
+        self.init_conv = PromptInConv(in_channels, hidden_channels)
 
         self.down_layers = nn.ModuleList(
             [
-                PromptAnalysisBlock(
-                    channel_dims[i], channel_dims[i + 1], scale=layer_scale
+                PromptDownBlock(
+                    channel_mults[i] * hidden_channels,
+                    channel_mults[i + 1] * hidden_channels,
+                    scale=layer_scale,
                 )
-                for i in range(depth - 1)
+                for i in range(depth)
             ]
         )
 
         self.up_layers = nn.ModuleList(
             [
-                PromptSynthesisBlock(
-                    channel_dims[-i],
-                    channel_dims[-i - 1],
-                    channel_dims[-i - 1],
+                PromptUpBlock(
+                    channel_mults[i + 1] * hidden_channels,
+                    channel_mults[i] * hidden_channels,
+                    channel_mults[i] * hidden_channels,
                     scale=layer_scale,
                 )
-                for i in range(1, depth)
+                for i in range(0, depth, -1)
             ]
         )
 
         self.prompt_out = nn.Conv3d(
-            channel_dims[0], 1, kernel_size=1, padding="same"
+            channel_mults[0] * hidden_channels,
+            1,
+            kernel_size=1,
+            padding="same",
         )
-        self.box_out = PromptBoxPredictor(channel_dims[0])
+        self.box_out = PromptBoxPredictor(channel_mults[0] * hidden_channels)
 
     def forward(self, x: Tensor, num_batches: int) -> tuple[Tensor, Tensor]:
         BD, C, H, W = x.shape
@@ -159,9 +207,10 @@ class PromptPredictor(nn.Module):
             outputs.append(x)
             x = block(x)
         for layer, skip_x in zip(
-            self.up_layers, reversed(outputs), strict=False
+            self.up_layers, reversed(outputs), strict=True
         ):
             x = layer(x, skip_x)
+
         prompt_outs = self.prompt_out(x)  # (B, 1, D, H, W)
         prompt_outs = prompt_outs.view(BD, 1, H, W)  # (B*D, 1, H, W)
         prompt_outs = F.interpolate(
@@ -170,7 +219,6 @@ class PromptPredictor(nn.Module):
             mode="bilinear",
             align_corners=True,
         )  # Upscale to original size
-        prompt_outs = torch.sigmoid(prompt_outs)  # Normalize to [0, 1]
         box_outs = self.box_out(x)  # (B*D, 4)
         return box_outs, prompt_outs
 
