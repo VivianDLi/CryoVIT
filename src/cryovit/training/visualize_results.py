@@ -18,6 +18,7 @@ import logging  # noqa: E402
 model_names = {
     "cryovit": "CryoViT",
     "unet3d": "3D U-Net",
+    "sam2": "SAM2",
 }
 
 experiment_names = {

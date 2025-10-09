@@ -68,7 +68,7 @@ def significance_test(
     score_B = df[df[key] == model_B].sort_values("tomo_name").dice_metric
     assert len(score_A) == len(
         score_B
-    ), "The two models must have the same number of samples for comparison."
+    ), f"The two models must have the same number of samples for comparison. {model_A} has {len(score_A)}, {model_B} has {len(score_B)}"
 
     if test_fn == "wilcoxon":
         _, pvalue = wilcoxon(
