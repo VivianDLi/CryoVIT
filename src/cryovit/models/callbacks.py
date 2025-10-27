@@ -60,6 +60,21 @@ class TestPredictionWriter(Callback):
                 if outputs.aux_data is not None:
                     fh.create_group("aux_data")
                     for key in outputs.aux_data:
+                        # convert floats to uint8 to save space
+                        if (
+                            outputs.aux_data[key].dtype == np.float32
+                            or outputs.aux_data[key].dtype == np.float64
+                        ):
+                            outputs.aux_data[key] = (
+                                outputs.aux_data[key]
+                                - outputs.aux_data[key].min()
+                            ) / (
+                                outputs.aux_data[key].max()
+                                - outputs.aux_data[key].min()
+                            )
+                            outputs.aux_data[key] = (
+                                outputs.aux_data[key] * 255.0
+                            ).astype(np.uint8)
                         fh["aux_data"].create_dataset(key, data=outputs.aux_data[key], compression="gzip")  # type: ignore
 
 
