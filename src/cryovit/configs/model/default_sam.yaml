@@ -11,4 +11,5 @@ custom_kwargs:
 
 defaults:
   - default
+  - override /trainer@_group_: fit_sam
   - _self_
