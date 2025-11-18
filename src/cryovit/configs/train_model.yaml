@@ -6,8 +6,8 @@ random_seed: 42
 
 defaults:
   - paths: default
-  - model: ???
   - trainer: fit
+  - model: ???
   - callbacks:
     - rich_progress_bar
     - stochastic_weight_average
