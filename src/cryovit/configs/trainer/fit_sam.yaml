@@ -1,0 +1,6 @@
+gradient_clip_val: 1 
+
+#### DO NOT CHANGE ####
+defaults:
+  - fit
+  - _self_
