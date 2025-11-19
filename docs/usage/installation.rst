@@ -55,8 +55,7 @@ Installation from Source
 ========================
 
 You can install CryoViT directly from a clone of the `Git repository`_.
-This requires having `git`_ installed on your system, as well as a conda-based
-Python distribution such as `miniforge`_.
+This requires having `git`_ installed on your system, as well as a virtual environment manager and Python distribution such as `miniforge`_.    
 
 .. _Git repository: https://github.com/sanketx/CryoVIT
 .. _git: https://git-scm.com/downloads
@@ -69,10 +68,9 @@ First, clone the repository: ::
 
 Next, create a conda environment based on the provided environment file: ::
 
-    $ conda env create -f environment.yaml
+    $ conda create --name cryovit_env
 
-This will create a conda environment named `cryovit_env`
-with all required dependencies.
+This will create a conda environment named `cryovit_env`. You can change this name to whatever you like.
 
 The final step is then to activate the environment
 and install CryoViT in editable mode: ::
@@ -80,5 +78,8 @@ and install CryoViT in editable mode: ::
     $ conda activate cryovit_env
     $ pip install -e .
 
-This will track any changes you make to the source code, allowing you to
-use CryoViT for development and testing.
+This will install all the packages necessary and track any changes you make to the source code, allowing you to use CryoViT for general use.
+
+You can download the additional packages for development and testing by running instead: ::
+
+    $ pip install -e .[dev]
