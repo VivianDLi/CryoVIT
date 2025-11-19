@@ -72,6 +72,7 @@ class BaseTrainer:
     max_epochs: int | None = None
     enable_checkpointing: bool = False
     enable_model_summary: bool = True
+    gradient_clip_val: float | None = None
     log_every_n_steps: int | None = None
 
 
@@ -210,9 +211,7 @@ def validate_dino_config(cfg: DinoFeaturesConfig) -> None:
         SystemExit: If any configuration parameters are missing.
     """
     missing_keys = OmegaConf.missing_keys(cfg)
-    error_msg = [
-        "The following parameters were missing from dino_features.yaml"
-    ]
+    error_msg = ["The following parameters were missing from dino_features.yaml"]
 
     for i, key in enumerate(missing_keys, 1):
         param_dict = DinoFeaturesConfig.__annotations__
