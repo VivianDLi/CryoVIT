@@ -1,4 +1,5 @@
-gradient_clip_val: 1 
+gradient_clip_val: 1
+gradient_clip_algorithm: norm
 
 #### DO NOT CHANGE ####
 defaults:
