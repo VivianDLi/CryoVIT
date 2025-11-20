@@ -74,8 +74,16 @@ class BaseModel(LightningModule, ABC):
             }
         )
 
-    def on_before_optimizer_step(self, optimizer: Optimizer) -> None:
-        """Logs gradient norms just before the optimizer updates weights."""
+    def configure_gradient_clipping(
+        self,
+        optimizer: Optimizer,
+        gradient_clip_val: float | None,
+        gradient_clip_algorithm: str | None,
+    ) -> None:
+        """Logs gradient norms after clipping."""
+        super().configure_gradient_clipping(
+            optimizer, gradient_clip_val, gradient_clip_algorithm
+        )
 
         norms = grad_norm(self, norm_type=2)
         self.log_dict(norms, on_step=True)
