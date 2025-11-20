@@ -60,6 +60,8 @@ class BaseTrainer:
         max_epochs (Optional[int]): The maximum number of epochs to train for.
         enable_checkpointing (bool): Flag to enable or disable model checkpointing. Default is False.
         enable_model_summary (bool): Enable model summarization. Default is True.
+        gradient_clip_val (Optional[float]): Value for gradient clipping. Default is None.
+        gradient_clip_algorithm (Optional[str]): Algorithm for gradient clipping. Default is None.
         log_every_n_steps (Optional[int]): Frequency of logging in terms of training steps.
     """
 
@@ -73,6 +75,7 @@ class BaseTrainer:
     enable_checkpointing: bool = False
     enable_model_summary: bool = True
     gradient_clip_val: float | None = None
+    gradient_clip_algorithm: str | None = None
     log_every_n_steps: int | None = None
 
 
@@ -211,7 +214,9 @@ def validate_dino_config(cfg: DinoFeaturesConfig) -> None:
         SystemExit: If any configuration parameters are missing.
     """
     missing_keys = OmegaConf.missing_keys(cfg)
-    error_msg = ["The following parameters were missing from dino_features.yaml"]
+    error_msg = [
+        "The following parameters were missing from dino_features.yaml"
+    ]
 
     for i, key in enumerate(missing_keys, 1):
         param_dict = DinoFeaturesConfig.__annotations__
