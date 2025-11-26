@@ -32,11 +32,18 @@ def merge_experiments(
     results = []
 
     for exp_name, value in exp_names.items():
-        result_csv = exp_dir / f"{exp_name}.csv"
-        df = pd.read_csv(result_csv)
+        # Combine intermediate CSV files for each experiment
+        exp_results = []
+        exp_files = list((exp_dir / exp_name).glob("*.csv"))
+        for exp_file in exp_files:
+            df = pd.read_csv(exp_file)
+            exp_results.append(df)
+        exp_df = pd.concat(exp_results, axis=0, ignore_index=True)
+        exp_df.to_csv(exp_dir / f"{exp_name}.csv", index=False)  # Save combined experiment results
+        # Add experiment labels
         for key, val in zip(keys, value, strict=True):
-            df[key] = val
-        results.append(df)
+            exp_df[key] = val
+        results.append(exp_df)
 
     return pd.concat(results, axis=0, ignore_index=True)
 

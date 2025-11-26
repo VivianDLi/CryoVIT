@@ -132,19 +132,19 @@ class PredictionWriter(BasePredictionWriter):
 class CsvWriter(Callback):
     """Callback to save model performance metrics to a .csv."""
 
-    def __init__(self, csv_result_path: Path, **kwargs) -> None:
+    def __init__(self, results_dir: Path, **kwargs) -> None:
         """Creates a callback to save performance metrics on the test data.
 
         Args:
-            csv_result_path (Path): .csv file in which metrics should be saved.
+            results_dir (Path): directory in which the .csv files should be saved.
         """
 
-        self.csv_result_path = (
-            csv_result_path
-            if isinstance(csv_result_path, Path)
-            else Path(csv_result_path)
+        self.results_dir = (
+            results_dir
+            if isinstance(results_dir, Path)
+            else Path(results_dir)
         )
-        self.csv_result_path.parent.mkdir(parents=True, exist_ok=True)
+        self.results_dir.mkdir(parents=True, exist_ok=True)
 
     def _create_metric_df(
         self,
@@ -184,16 +184,18 @@ class CsvWriter(Callback):
             outputs.tomo_names[0],
             outputs.split_id[0] if outputs.split_id is not None else None,
         )
+        
+        csv_result_path = self.results_dir / f"{sample}{'' if split_id is None else f'_{split_id}'}.csv"
 
         # Create results .csv if it doesn't exist
         metric_names = list(outputs.metrics)
         column_names = ["sample", "tomo_name"] + metric_names
         if split_id is not None:
             column_names += ["split_id"]
-        if not self.csv_result_path.exists():
+        if not csv_result_path.exists():
             results_df = pd.DataFrame(columns=column_names)
         else:
-            results_df = pd.read_csv(self.csv_result_path)
+            results_df = pd.read_csv(csv_result_path)
 
         # Warn if row already exists and remove (i.e., replace)
         matching_rows = (results_df["tomo_name"] == tomo_name) & (
@@ -220,4 +222,4 @@ class CsvWriter(Callback):
             results_df = metrics_df
         else:
             results_df = pd.concat([results_df, metrics_df], ignore_index=True)
-        results_df.to_csv(self.csv_result_path, mode="w", index=False)
+        results_df.to_csv(csv_result_path, mode="w", index=False)
