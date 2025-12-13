@@ -1,6 +1,6 @@
 """3D U-Net-based prompt predictor for SAM2 using image encodings and LoRA adaptation modules.
 
-Prompt predictor architecture is based on the prompt encoder U-Net in https://github.com/ChengyinLee/AutoProSAM_2024/.
+Prompt predictor architecture is based on the prompt encoder U-Net in https://github.com/ChengyinLee/AutoProSAM_2024/ and https://github.com/aswahd/SamRadiology/tree/main.
 """
 
 import numpy as np

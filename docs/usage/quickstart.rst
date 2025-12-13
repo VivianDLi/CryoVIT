@@ -165,7 +165,7 @@ To run the ``features`` script, we need to specify the input tomogram folder and
 
 .. note::
 
-    This step requires a GPU, and is possibly very memory-intensive. If you run into out-of-memory issues, try reducing the ``--batch-size`` or ``--window-size`` arguments. Reducing the batch size is preferable, as reducing the window size will affect the quality of the extracted features.
+    This step requires a GPU, and is possibly very memory-intensive. If you run into out-of-memory issues, try reducing the ``--batch-size`` argument.
 
 Then, we can run the ``infer`` script on the extracted features,
 storing the results in a ``predictions`` folder: ::

@@ -28,15 +28,6 @@ def features(
             rich_help_panel="Customization and Utils",
         ),
     ] = 64,
-    window_size: Annotated[
-        int | None,
-        Option(
-            min=1,
-            help="Window size for DINO feature extraction.",
-            show_default="720",
-            rich_help_panel="Customization and Utils",
-        ),
-    ] = None,
     visualize: Annotated[
         bool,
         Option(
@@ -63,11 +54,6 @@ def features(
     ## Convert Arguments
     tomograms_path = Path(tomograms)
     result_path = Path(result_folder)
-    window_size = (
-        (DINO_PATCH_SIZE * window_size // 16)
-        if window_size is not None
-        else DEFAULT_WINDOW_SIZE
-    )
 
     ## Sanity Checking
     assert tomograms_path.exists(), "Tomograms path does not exist."
@@ -79,6 +65,5 @@ def features(
         tomogram_files,
         result_path,
         batch_size=batch_size,
-        window_size=window_size,
         visualize=visualize,
     )

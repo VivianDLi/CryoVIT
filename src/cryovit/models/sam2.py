@@ -18,7 +18,7 @@ from sam2.modeling.sam2_base import SAM2Base
 from torch import Tensor
 from torch.optim import Optimizer
 
-from cryovit.config import BaseModel as BaseModelConfig
+from cryovit.config import BaseModel as BaseModelConfig, SAM_IMAGE_SIZE
 from cryovit.models.base_model import BaseModel
 from cryovit.models.sam2_blocks import LoRAMaskDecoderFactory, PromptPredictor
 from cryovit.types import BatchedTomogramData
@@ -54,6 +54,8 @@ class SAM2(BaseModel):
         self.prompt_lr = custom_kwargs.get("prompt_lr", 3e-05)
         if "prompt_lr" in custom_kwargs:
             del custom_kwargs["prompt_lr"]
+        self.use_cache_features = custom_kwargs.get("use_cache_features", False)
+        custom_kwargs["use_cache_features"] = self.use_cache_features
         self.model = sam_model(**custom_kwargs)
         self.prompt_predictor = PromptPredictor()
 
@@ -181,6 +183,23 @@ class SAM2(BaseModel):
 
         return losses["total"]
 
+    def forward_features(self, data: torch.Tensor) -> list[torch.Tensor]:
+        """Forward pass through the image encoder to extract features."""
+        b, d, c, h, w = data.shape
+        # Resize to SAM image size if needed
+        do_resize = self.model.image_size != h or self.model.image_size != w
+        if do_resize:
+            data = F.interpolate(
+                data,
+                size=(c, self.model.image_size, self.model.image_size),
+                mode="trilinear",
+                align_corners=False,
+            )
+        # Flatten batch
+        flat_data = data.reshape(-1, c, self.model.image_size, self.model.image_size)
+        backbone = self.model.image_encoder(flat_data)
+        return backbone
+
     def forward(self, data: BatchedTomogramData) -> dict[str, Tensor]:  # type: ignore
         C, H, W = data.tomo_batch.shape[-3:]  # [H, W]
         truncate_size = 0
@@ -210,7 +229,7 @@ class SAM2(BaseModel):
                 align_corners=False,
             )
 
-        backbone = self.model.image_encoder(data.flat_tomo_batch)
+        backbone = self.model._image_encoder(data)
         box_prompts, mask_prompts = self.prompt_predictor(
             backbone["backbone_fpn"][0], num_batches=data.num_tomos
         )  # flat tensor form
@@ -259,9 +278,10 @@ class SAM2(BaseModel):
     def compile(self) -> None:
         """Compiles the model image encoder for training."""
 
-        self.model.image_encoder.forward = torch.compile(
-            self.model.image_encoder.forward
-        )
+        if not self.use_cache_features:
+            self.model.image_encoder.forward = torch.compile(
+                self.model.image_encoder.forward
+            )
         self.model.memory_encoder.forward = torch.compile(
             self.model.memory_encoder.forward
         )
@@ -280,6 +300,7 @@ class SAM2Train(SAM2Base):
         memory_encoder: nn.Module,
         num_init_cond_slices: tuple[int, int] = (1, 1),
         rand_init_cond_slices: tuple[bool, bool] = (True, False),
+        use_cache_features: bool = False,
         **kwargs,
     ) -> None:
         """Initializes the SAM2 model with pre-trained blocks."""
@@ -289,6 +310,7 @@ class SAM2Train(SAM2Base):
         )
         self.num_init_cond_slices = num_init_cond_slices
         self.rand_init_cond_slices = rand_init_cond_slices
+        self.use_cache_features = use_cache_features
 
     def _apply_lora_to_mask_decoder(self):
         """Delay applying LoRA to the mask decoder until after loading weights."""
@@ -298,10 +320,26 @@ class SAM2Train(SAM2Base):
         )  # Using alpha=r
         self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
+    def _image_encoder(self, data: BatchedTomogramData) -> list[torch.Tensor]:
+        """Either returns cached features from the tomogram batch or computes them using the image encoder."""
+        if self.use_cache_features:
+            assert data.aux_data is not None and "sam_features" in data.aux_data, "sam_features must be provided in aux_data to use cached features."
+            return data.aux_data["sam_features"]
+        return self.model.image_encoder(data.flat_tomo_batch)
+
     def forward(self, data: BatchedTomogramData, box_prompts: Tensor, mask_prompts: Tensor) -> dict[str, Any] | Tensor:  # type: ignore
         """Forward pass for the SAMv2 model."""
 
-        backbone_out = self.forward_image(data.flat_tomo_batch)
+        backbone_out = self._image_encoder(data)
+        if self.use_high_res_features_in_sam:
+            # precompute projected level 0 and level 1 features in SAM decoder
+            # to avoid running it again on every SAM click
+            backbone_out["backbone_fpn"][0] = self.sam_mask_decoder.conv_s0(
+                backbone_out["backbone_fpn"][0]
+            )
+            backbone_out["backbone_fpn"][1] = self.sam_mask_decoder.conv_s1(
+                backbone_out["backbone_fpn"][1]
+            )
         backbone_out = self.prepare_prompt_inputs(
             backbone_out, data, box_prompts, mask_prompts
         )
@@ -725,7 +763,7 @@ def create_sam_model_from_weights(cfg: BaseModelConfig, sam_dir: Path) -> SAM2:
         "cryovit.models.sam2.SAM2Train"  # Use cryovit SAM2 as target
     )
     model_cfg.image_size = (
-        512  # Set image size to 512 (crop size for training)
+        SAM_IMAGE_SIZE  # Set image size to 512 (crop size for training)
     )
     model_cfg.use_mask_input_as_output_without_sam = (
         False  # use sam memory and mask decoder

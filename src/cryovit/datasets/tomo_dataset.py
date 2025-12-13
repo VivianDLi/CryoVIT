@@ -120,7 +120,15 @@ class TomoDataset(Dataset):
                 data = data[np.newaxis, ...]  # add channel dimension
             data_dict["input"] = data
             data_dict["label"] = fh["labels"][self.label_key][()]  # type: ignore
-            data_dict |= {key: fh[key][()] for key in self.aux_keys if key in fh}  # type: ignore
+
+            # Load auxiliary data if specified
+            aux_dict = {}
+            for key in self.aux_keys:
+                if key in fh and isinstance(fh[key], h5py.Dataset):
+                    aux_dict[key] = fh[key][()]  # type: ignore
+                else: # if not a dataset, assume it's a group holding a list of datasets
+                    aux_dict[key] = [fh[key][i][()] for i in range(len(fh[key]))]  # type: ignore
+            data_dict |= aux_dict  # type: ignore
 
         return data_dict
 

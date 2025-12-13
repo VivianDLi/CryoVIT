@@ -1,11 +1,14 @@
 # Path to the DINOv2 foundation model
-model_dir: ${paths.model_dir}/${paths.dino_name}
+model_dir: ${paths.model_dir}/${paths.sam_name}
 
 # Sample to vectorize using DINOv2 (all samples)
 sample: null
 
 # Export DINOv2 features with PCA
 export_features: False
+
+# Use SAM model to extract features
+use_sam: True
 
 #################### Do not modify #####################
 

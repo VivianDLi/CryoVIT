@@ -76,12 +76,12 @@ class FileDataset(Dataset):
         aux_data = {}
 
         if self.for_dino:
-            dino_data = self._dino_transform(data["input"])
+            feature_data = self._sam_transform(data["input"]) if use_sam else self._dino_transform(data["input"])
             return TomogramData(
                 sample=file_data.sample,
                 tomo_name=file_data.tomo_path.name,
                 split_id=None,
-                data=dino_data,
+                data=feature_data,
                 label=torch.zeros(
                     data["input"].shape, dtype=torch.bool
                 ),  # dummy label,
@@ -221,4 +221,23 @@ class FileDataset(Dataset):
         torch_data: torch.Tensor = F.interpolate(
             torch_data, scale_factor=scale, mode="bicubic"
         )
+        return torch_data
+
+    def _sam_transform(self, data: NDArray[np.float32]) -> torch.Tensor:
+        """Applies normalization and resizing transformations to the tomogram for SAM model.
+
+        Args:
+            data (NDArray[np.float32]): The loaded tomogram data as a numpy array.
+            
+        Returns:
+            torch.Tensor: The transformed data as a PyTorch tensor.
+        """
+
+        _, h, w = data.shape
+        np_data = np.expand_dims(data, axis=(1, 0)) # B, D, C, H, W
+        np_data = np.repeat(np_data, 3, axis=2)
+        
+        torch_data = torch.from_numpy(
+            np_data
+        ).float()  # data expected to be float already, [0-1]
         return torch_data

@@ -18,6 +18,7 @@ DINO_PATCH_SIZE = 14
 DEFAULT_WINDOW_SIZE = (
     630  # Calculated assuming DINOv2 patch size of 14 and input size of 720
 )
+SAM_IMAGE_SIZE = 512
 
 
 @dataclass
@@ -140,19 +141,21 @@ class DinoFeaturesConfig:
 
     Attributes:
         batch_size (int): Number of tomogram slices to process as one batch. Default is 128.
-        dino_dir (Path): Path to the DINOv2 foundation model.
+        model_dir (Path): Path to the foundation model directory.
         paths (ExperimentPaths): Configuration for experiment paths.
         datamodule (dict[str, Any]): Configuration for the datamodule to use for loading tomograms.
         sample (Optional[Sample]): Sample to calculate features for. None means to calculate features for all samples.
         export_features (bool): Whether to additionally compute PCA colormaps for the calculated features.
+        use_sam (bool): Whether to compute SAMv2 image encodings instead of DINOv2 features.
     """
 
     batch_size: int = 128
-    dino_dir: Path = MISSING
+    model_dir: Path = MISSING
     paths: ExperimentPaths = MISSING
     datamodule: dict = MISSING
     sample: Sample | None = MISSING
     export_features: bool = False
+    use_sam: bool = False
 
 
 @dataclass
