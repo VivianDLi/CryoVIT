@@ -20,7 +20,9 @@ IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
 class VITDataset(Dataset):
     """Dataset class for Vision Transformer models, loading and processing tomograms."""
 
-    def __init__(self, data_root: Path, use_sam: bool, records: list[str]) -> None:
+    def __init__(
+        self, data_root: Path, use_sam: bool, records: list[str]
+    ) -> None:
         """Initializes a dataset object to load tomograms, applying normalization and resizing for DINOv2 models.
 
         Args:
@@ -60,7 +62,11 @@ class VITDataset(Dataset):
 
         record = self.records[idx]
         data = self._load_tomogram(record)
-        return self._sam_transform(data) if self.use_sam else self._dino_transform(data)
+        return (
+            self._sam_transform(data)
+            if self.use_sam
+            else self._dino_transform(data)
+        )
 
     def _load_tomogram(self, record: str) -> NDArray[np.float32]:
         """Loads a tomogram from disk, assuming it is stored as an .hdf file in a `data` key.
@@ -127,7 +133,7 @@ class VITDataset(Dataset):
         """
 
         _, h, w = data.shape
-        np_data = np.expand_dims(data, axis=(1, 0)) # B, D, C, H, W
+        np_data = np.expand_dims(data, axis=(0, 2))  # B, D, C, H, W
         np_data = np.repeat(np_data, 3, axis=2)
 
         torch_data = torch.from_numpy(

@@ -1,6 +1,6 @@
-model_dir: /home/vivian/Documents/Work/Data/foundation_models
-data_dir: /home/vivian/Documents/Work/Data/cryovit-data
-exp_dir: /home/vivian/Documents/Work/Results/CryoVIT
+model_dir: /mnt/f/cryovit-data/foundation_models
+data_dir: /mnt/f/cryovit-data
+exp_dir: /mnt/f/cryovit-data/results
 results_dir: ${paths.exp_dir}
 
 # tomo_name: ???

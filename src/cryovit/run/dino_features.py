@@ -12,12 +12,12 @@ from numpy.typing import NDArray
 from rich.progress import track
 
 from cryovit.config import (
-    DEFAULT_WINDOW_SIZE,
     BaseDataModule,
     DinoFeaturesConfig,
     samples,
     tomogram_exts,
 )
+from cryovit.models import create_sam_model_from_weights
 from cryovit.types import FileData
 from cryovit.visualization.dino_pca import export_pca
 
@@ -63,12 +63,13 @@ def _dino_features(
 
     return np.concatenate(all_features, axis=1)  # type: ignore
 
+
 @torch.inference_mode()
 def _sam_features(
     data: torch.Tensor,
     model: torch.nn.Module,
     batch_size: int,
-) -> list[NDArray[np.float32]]:
+) -> dict[str, list[NDArray[np.float32]]]:
     """Extract patch features from a tomogram using a SAM model.
 
     Args:
@@ -80,28 +81,34 @@ def _sam_features(
         list[NDArray[np.float32]]: A list of numpy arrays containing the extracted features of different levels.
     """
     data = data.cuda()
-    all_features = []
+    all_features = {}
 
     for i in range(0, len(data), batch_size):
         # Check for overflows
         if i + batch_size > len(data):
             batch_size = len(data) - i
         vec = data[i : i + batch_size]
-        features = model.forward_features(vec)  # type: ignore
-        for i, feature in enumerate(features):
-            feature = feature.to("cpu").numpy()
-            if len(all_features) <= i:
-                all_features.append(feature)
-            else:
-                all_features[i] = np.concatenate(
-                    [all_features[i], feature], axis=0
-                )  # type: ignore
+        backbone = model.forward_features(vec)  # type: ignore
+        for key, features in backbone.items():
+            if key == "vision_features":
+                continue  # skip vision features (contained in backbone)
+            feature_list = []
+            for i, feature in enumerate(features):
+                feature = feature.to("cpu").half().numpy()
+                if len(feature_list) <= i:
+                    feature_list.append(feature)
+                else:
+                    feature_list[i] = np.concatenate(
+                        [feature_list[i], feature], axis=0
+                    )  # type: ignore
+            all_features[key] = feature_list
 
     return all_features
 
+
 def _save_data(
     data: dict[str, NDArray[np.uint8]],
-    features: NDArray[np.float16] | list[NDArray[np.float32]],
+    features: NDArray[np.float16] | dict[str, list[NDArray[np.float32]]],
     tomo_name: str,
     dst_dir: Path,
 ) -> None:
@@ -116,7 +123,7 @@ def _save_data(
                     fh.create_group("labels")
                 fh["labels"].create_dataset(key, data=data[key], shape=data[key].shape, dtype=data[key].dtype, compression="gzip")  # type: ignore
             elif key == "dino_features":
-                continue # skip original dino_features
+                continue  # skip original dino_features
             else:
                 fh.create_dataset(
                     "data",
@@ -125,17 +132,18 @@ def _save_data(
                     dtype=data[key].dtype,
                     compression="gzip",
                 )
-        if isinstance(features, list):
+        if isinstance(features, dict):
             if "dino_features" in data:
                 # Save original dino_features if SAM features were computed
                 fh.create_dataset("dino_features", data=data["dino_features"], shape=data["dino_features"].shape, dtype=data["dino_features"].dtype, compression="gzip")  # type: ignore
-            for i, feat in enumerate(features):
-                fh.create_dataset(
-                    f"sam_features/{i}",
-                    data=feat,
-                    shape=feat.shape,
-                    dtype=feat.dtype,
-                )
+            for key, feats in features.items():
+                for i, feat in enumerate(feats):
+                    fh.create_dataset(
+                        f"sam_features/{key}/{i}",
+                        data=feat,
+                        shape=feat.shape,
+                        dtype=feat.dtype,
+                    )
         else:
             fh.create_dataset(
                 "dino_features",
@@ -153,8 +161,8 @@ def _process_sample(
     sample: str,
     datamodule: BaseDataModule,
     batch_size: int,
-    use_sam: bool = False,
     image_dir: Path | None,
+    use_sam: bool = False,
 ):
     """Process all tomograms in a single sample by extracting and saving their DINOv2 features."""
 
@@ -169,9 +177,9 @@ def _process_sample(
     else:
         records = pd.read_csv(csv_file)["tomo_name"].to_list()
 
-    dataset = instantiate(datamodule.dataset, data_root=tomo_dir, use_sam=use_sam)(
-        records=records
-    )
+    dataset = instantiate(
+        datamodule.dataset, data_root=tomo_dir, use_sam=use_sam
+    )(records=records)
     dataloader = instantiate(datamodule.dataloader)(dataset=dataset)
 
     for i, x in track(
@@ -185,7 +193,11 @@ def _process_sample(
         data = {}
         with h5py.File(tomo_dir / records[i]) as fh:
             for key in fh:
-                data[key] = fh[key][()]  # type: ignore
+                if isinstance(fh[key], h5py.Group):
+                    for subkey in fh[key]:  # type: ignore
+                        data[subkey] = fh[key][subkey][()]  # type: ignore
+                else:
+                    data[key] = fh[key][()]  # type: ignore
 
         _save_data(data, features, records[i], result_dir)
         # Save PCA calculation of features
@@ -229,11 +241,13 @@ def run_dino(
                 "datamodule/dataset=file",
             ],
         )
-        sam_cfg = compose(config_name="model/sam2")
 
     if use_sam:
         ## Load SAM2 model
-        model = create_sam_model_from_weights(sam_cfg, cfg.model_dir)
+        assert (
+            cfg.model is not None
+        ), "SAM model configuration must be provided."
+        model = create_sam_model_from_weights(cfg.model, cfg.model_dir).cuda()
         model.eval()
     else:
         ## Load DINOv2 model
@@ -268,6 +282,9 @@ def run_dino(
             result_dir, tomo_name = result_path.parent, result_path.name
             _save_data(x.aux_data, features, tomo_name, result_dir)
             if visualize:
+                assert isinstance(
+                    features, np.ndarray
+                ), "Visualization is only supported for DINO features."
                 export_pca(
                     x.aux_data["data"],
                     features,
@@ -308,7 +325,10 @@ def run_trainer(cfg: DinoFeaturesConfig) -> None:
 
     if cfg.use_sam:
         ## Load SAM2 model
-        model = create_sam_model_from_weights(sam_cfg, cfg.model_dir)
+        assert (
+            cfg.model is not None
+        ), "SAM model configuration must be provided."
+        model = create_sam_model_from_weights(cfg.model, cfg.model_dir).cuda()
         model.eval()
     else:
         ## Load DINOv2 model
@@ -325,6 +345,6 @@ def run_trainer(cfg: DinoFeaturesConfig) -> None:
             sample_name,
             cfg.datamodule,  # type: ignore
             cfg.batch_size,
-            cfg.use_sam,
             image_dir if cfg.export_features else None,
+            cfg.use_sam,
         )

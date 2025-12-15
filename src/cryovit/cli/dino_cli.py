@@ -45,7 +45,6 @@ def features(
     cryovit features <path-to-tomograms> <path-to-result-folder>
     """
     from cryovit._logging_config import setup_logging
-    from cryovit.config import DEFAULT_WINDOW_SIZE, DINO_PATCH_SIZE
     from cryovit.run.dino_features import run_dino
     from cryovit.utils import load_files_from_path
 

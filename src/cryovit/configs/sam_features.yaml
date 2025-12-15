@@ -13,9 +13,11 @@ use_sam: True
 #################### Do not modify #####################
 
 defaults:
+  - trainer: null
   - paths: default
   - datamodule: dino
   - dino_features_config
+  - model: sam2
   - _self_
   - override hydra/hydra_logging: rich_logger
   - override hydra/job_logging: rich_logger

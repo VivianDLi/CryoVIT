@@ -29,6 +29,7 @@ class FileDataset(Dataset):
         label_key: str | None,
         train: bool = False,
         for_dino: bool = False,
+        use_sam: bool = False,
     ) -> None:
         """Creates a new FileDataset object.
 
@@ -38,6 +39,7 @@ class FileDataset(Dataset):
             label_key (Optional[str]): The key in a HDF5 file to access labels.
             train (bool): Flag to determine if the dataset is for training (enables transformations).
             for_dino (bool): Flag to determine if the dataset is for DINO feature extraction (enables DINO transformations).
+            use_sam (bool): Flag to determine if the dataset is for SAM model (enables SAM transformations).
         """
 
         self.files = files
@@ -45,6 +47,7 @@ class FileDataset(Dataset):
         self.label_key = label_key
         self.train = train
         self.for_dino = for_dino
+        self.use_sam = use_sam
 
         self.transform = Normalize(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)
         self._key_cache = {}
@@ -76,7 +79,11 @@ class FileDataset(Dataset):
         aux_data = {}
 
         if self.for_dino:
-            feature_data = self._sam_transform(data["input"]) if use_sam else self._dino_transform(data["input"])
+            feature_data = (
+                self._sam_transform(data["input"])
+                if self.use_sam
+                else self._dino_transform(data["input"])
+            )
             return TomogramData(
                 sample=file_data.sample,
                 tomo_name=file_data.tomo_path.name,
@@ -228,15 +235,15 @@ class FileDataset(Dataset):
 
         Args:
             data (NDArray[np.float32]): The loaded tomogram data as a numpy array.
-            
+
         Returns:
             torch.Tensor: The transformed data as a PyTorch tensor.
         """
 
         _, h, w = data.shape
-        np_data = np.expand_dims(data, axis=(1, 0)) # B, D, C, H, W
+        np_data = np.expand_dims(data, axis=(1, 0))  # B, D, C, H, W
         np_data = np.repeat(np_data, 3, axis=2)
-        
+
         torch_data = torch.from_numpy(
             np_data
         ).float()  # data expected to be float already, [0-1]

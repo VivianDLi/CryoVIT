@@ -148,6 +148,13 @@ class BatchedTomogramData:
         self.tomo_batch = self.tomo_batch.pin_memory(device=device)
         self.tomo_sizes = self.tomo_sizes.pin_memory(device=device)
         self.labels = self.labels.pin_memory(device=device)
+        # handle cached SAM2 features
+        if self.aux_data is not None and "sam_features" in self.aux_data:
+            for key in self.aux_data["sam_features"]:
+                self.aux_data["sam_features"][key] = [
+                    feat.pin_memory(device=device)
+                    for feat in self.aux_data["sam_features"][key]
+                ]
         return self
 
     @property
@@ -209,4 +216,4 @@ class BatchedModelResult:
     preds: list[NDArray[np.float32]]
     losses: dict[str, float]
     metrics: dict[str, float]
-    aux_data: dict[str, list[Any]] | None = None
+    aux_data: dict[str, Any] | None = None

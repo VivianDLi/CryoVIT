@@ -18,7 +18,8 @@ from sam2.modeling.sam2_base import SAM2Base
 from torch import Tensor
 from torch.optim import Optimizer
 
-from cryovit.config import BaseModel as BaseModelConfig, SAM_IMAGE_SIZE
+from cryovit.config import SAM_IMAGE_SIZE
+from cryovit.config import BaseModel as BaseModelConfig
 from cryovit.models.base_model import BaseModel
 from cryovit.models.sam2_blocks import LoRAMaskDecoderFactory, PromptPredictor
 from cryovit.types import BatchedTomogramData
@@ -54,7 +55,9 @@ class SAM2(BaseModel):
         self.prompt_lr = custom_kwargs.get("prompt_lr", 3e-05)
         if "prompt_lr" in custom_kwargs:
             del custom_kwargs["prompt_lr"]
-        self.use_cache_features = custom_kwargs.get("use_cache_features", False)
+        self.use_cache_features = custom_kwargs.get(
+            "use_cache_features", False
+        )
         custom_kwargs["use_cache_features"] = self.use_cache_features
         self.model = sam_model(**custom_kwargs)
         self.prompt_predictor = PromptPredictor()
@@ -183,7 +186,9 @@ class SAM2(BaseModel):
 
         return losses["total"]
 
-    def forward_features(self, data: torch.Tensor) -> list[torch.Tensor]:
+    def forward_features(
+        self, data: torch.Tensor
+    ) -> dict[str, list[torch.Tensor]]:
         """Forward pass through the image encoder to extract features."""
         b, d, c, h, w = data.shape
         # Resize to SAM image size if needed
@@ -196,7 +201,9 @@ class SAM2(BaseModel):
                 align_corners=False,
             )
         # Flatten batch
-        flat_data = data.reshape(-1, c, self.model.image_size, self.model.image_size)
+        flat_data = data.reshape(
+            -1, c, self.model.image_size, self.model.image_size
+        )
         backbone = self.model.image_encoder(flat_data)
         return backbone
 
@@ -289,6 +296,23 @@ class SAM2(BaseModel):
             self.model.memory_attention.forward
         )
 
+    def transfer_batch_to_device(self, batch, device, dataloader_idx):
+        """Override transfer_batch_to_device to handle moving SAM features to device."""
+        batch = super().transfer_batch_to_device(batch, device, dataloader_idx)
+        if batch.aux_data is not None and "sam_features" in batch.aux_data:
+            # ensure sam_features are also moved to device
+            for key in batch.aux_data["sam_features"]:
+                if isinstance(batch.aux_data["sam_features"][key], list):
+                    for i in range(len(batch.aux_data["sam_features"][key])):
+                        batch.aux_data["sam_features"][key][i] = (
+                            batch.aux_data["sam_features"][key][i].to(device)
+                        )
+                else:
+                    batch.aux_data["sam_features"][key] = batch.aux_data[
+                        "sam_features"
+                    ][key].to(device)
+        return batch
+
 
 class SAM2Train(SAM2Base):
     """SAMv2 model implementation."""
@@ -320,12 +344,16 @@ class SAM2Train(SAM2Base):
         )  # Using alpha=r
         self.sam_mask_decoder = decoder_factory.apply(self.sam_mask_decoder)
 
-    def _image_encoder(self, data: BatchedTomogramData) -> list[torch.Tensor]:
+    def _image_encoder(
+        self, data: BatchedTomogramData  # type: ignore
+    ) -> dict[str, list[torch.Tensor]]:
         """Either returns cached features from the tomogram batch or computes them using the image encoder."""
         if self.use_cache_features:
-            assert data.aux_data is not None and "sam_features" in data.aux_data, "sam_features must be provided in aux_data to use cached features."
+            assert (
+                data.aux_data is not None and "sam_features" in data.aux_data
+            ), "sam_features must be provided in aux_data to use cached features."
             return data.aux_data["sam_features"]
-        return self.model.image_encoder(data.flat_tomo_batch)
+        return self.image_encoder(data.flat_tomo_batch)
 
     def forward(self, data: BatchedTomogramData, box_prompts: Tensor, mask_prompts: Tensor) -> dict[str, Any] | Tensor:  # type: ignore
         """Forward pass for the SAMv2 model."""
@@ -336,10 +364,10 @@ class SAM2Train(SAM2Base):
             # to avoid running it again on every SAM click
             backbone_out["backbone_fpn"][0] = self.sam_mask_decoder.conv_s0(
                 backbone_out["backbone_fpn"][0]
-            )
+            )  # type: ignore
             backbone_out["backbone_fpn"][1] = self.sam_mask_decoder.conv_s1(
                 backbone_out["backbone_fpn"][1]
-            )
+            )  # type: ignore
         backbone_out = self.prepare_prompt_inputs(
             backbone_out, data, box_prompts, mask_prompts
         )

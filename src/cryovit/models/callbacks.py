@@ -140,9 +140,7 @@ class CsvWriter(Callback):
         """
 
         self.results_dir = (
-            results_dir
-            if isinstance(results_dir, Path)
-            else Path(results_dir)
+            results_dir if isinstance(results_dir, Path) else Path(results_dir)
         )
         self.results_dir.mkdir(parents=True, exist_ok=True)
 
@@ -184,8 +182,11 @@ class CsvWriter(Callback):
             outputs.tomo_names[0],
             outputs.split_id[0] if outputs.split_id is not None else None,
         )
-        
-        csv_result_path = self.results_dir / f"{sample}{'' if split_id is None else f'_{split_id}'}.csv"
+
+        csv_result_path = (
+            self.results_dir
+            / f"{sample}{'' if split_id is None else f'_{split_id}'}.csv"
+        )
 
         # Create results .csv if it doesn't exist
         metric_names = list(outputs.metrics)

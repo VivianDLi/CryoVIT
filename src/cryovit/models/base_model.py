@@ -77,8 +77,8 @@ class BaseModel(LightningModule, ABC):
     def configure_gradient_clipping(
         self,
         optimizer: Optimizer,
-        gradient_clip_val: float | None,
-        gradient_clip_algorithm: str | None,
+        gradient_clip_val: float | None = None,
+        gradient_clip_algorithm: str | None = None,
     ) -> None:
         """Logs gradient norms after clipping."""
         super().configure_gradient_clipping(

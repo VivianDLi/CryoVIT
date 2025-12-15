@@ -2,7 +2,7 @@
 
 import logging
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -15,9 +15,6 @@ samples: list[str] = [sample.name for sample in Sample]
 tomogram_exts: list[str] = [".hdf", ".mrc"]
 
 DINO_PATCH_SIZE = 14
-DEFAULT_WINDOW_SIZE = (
-    630  # Calculated assuming DINOv2 patch size of 14 and input size of 720
-)
 SAM_IMAGE_SIZE = 512
 
 
@@ -152,6 +149,7 @@ class DinoFeaturesConfig:
     batch_size: int = 128
     model_dir: Path = MISSING
     paths: ExperimentPaths = MISSING
+    model: BaseModel | None = None
     datamodule: dict = MISSING
     sample: Sample | None = MISSING
     export_features: bool = False
@@ -165,7 +163,7 @@ class BaseExperimentConfig:
     Attributes:
         name (str): Name of the experiment, should be unique for each configuration.
         label_key (str): Key used to specify the training labels.
-        additional_keys (tuple[str]): Keys to pass through additional data from the dataset.
+        additional_keys (list[str]): Keys to pass through additional data from the dataset.
         random_seed (int): Random seed set for reproducibility. Default is 42.
         paths (ExperimentPaths): Configuration for experiment paths.
         model (BaseModel): Configuration for the model to use.
@@ -179,7 +177,7 @@ class BaseExperimentConfig:
 
     name: str = MISSING
     label_key: str = MISSING
-    additional_keys: tuple[str] = ()  # type: ignore
+    additional_keys: list[str] = field(default_factory=list)
     random_seed: int = 42
     paths: ExperimentPaths = MISSING
     model: BaseModel = MISSING
@@ -282,5 +280,18 @@ def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
     if invalid_samples:
         logging.error("\n".join(error_msg))
         sys.exit(1)
+
+    # Add cached SAM2 features to additional keys if using SAM2 model
+    is_sam_model = (
+        cfg.model is not None and "sam" in cfg.model._target_.lower()
+    )
+    needs_sam_features = (
+        "sam_features" not in cfg.additional_keys
+        and cfg.model.custom_kwargs is not None
+        and "use_cache_features" in cfg.model.custom_kwargs
+        and cfg.model.custom_kwargs["use_cache_features"]
+    )
+    if is_sam_model and needs_sam_features:
+        cfg.additional_keys.append("sam_features")
 
     OmegaConf.set_struct(cfg, False)  # type: ignore

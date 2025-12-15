@@ -43,7 +43,35 @@ def collate_fn(batch: list[TomogramData]) -> BatchedTomogramData:  # type: ignor
         data = tomo_data.data
         label = tomo_data.label
         for key, value in tomo_data.aux_data.items():
-            aux_data[key].append(value)
+            if key == "sam_features":  # special handling for SAM features
+                if isinstance(aux_data[key], dict):
+                    backbone: dict = aux_data[key]  # type: ignore
+                    for i in range(len(backbone["backbone_fpn"])):
+                        backbone["backbone_fpn"][i] = torch.cat(
+                            (
+                                backbone["backbone_fpn"][i],
+                                value["backbone_fpn"][i],
+                            ),
+                            dim=0,
+                        )
+                        backbone["vision_pos_enc"][i] = torch.cat(
+                            (
+                                backbone["vision_pos_enc"][i],
+                                value["vision_pos_enc"][i],
+                            ),
+                            dim=0,
+                        )
+                    backbone["vision_features"] = torch.cat(
+                        (
+                            backbone["vision_features"],
+                            value["vision_features"],
+                        ),
+                        dim=0,
+                    )
+                else:
+                    aux_data[key] = value
+            else:
+                aux_data[key].append(value)
 
         # Pad data
         D = data.size()[-3]

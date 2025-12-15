@@ -6,6 +6,7 @@ from typing import Any
 import h5py
 import numpy as np
 import pandas as pd
+from torch import tensor
 from torch.utils.data import Dataset
 
 from cryovit.types import TomogramData
@@ -124,10 +125,22 @@ class TomoDataset(Dataset):
             # Load auxiliary data if specified
             aux_dict = {}
             for key in self.aux_keys:
-                if key in fh and isinstance(fh[key], h5py.Dataset):
+                if (
+                    key == "sam_features" and key in fh
+                ):  # handle cached SAM features separately
+                    feature_dict = {}
+                    for feature_key in fh[key]:  # type: ignore
+                        feature_list = []
+                        for i in range(len(fh[key][feature_key])):  # type: ignore
+                            feature_list.append(tensor(fh[key][feature_key][str(i)][()]).half())  # type: ignore
+                        feature_dict[feature_key] = feature_list
+                    if "vision_features" not in feature_dict:
+                        feature_dict["vision_features"] = feature_dict[
+                            "backbone_fpn"
+                        ][-1]
+                    aux_dict[key] = feature_dict
+                elif key in fh:
                     aux_dict[key] = fh[key][()]  # type: ignore
-                else: # if not a dataset, assume it's a group holding a list of datasets
-                    aux_dict[key] = [fh[key][i][()] for i in range(len(fh[key]))]  # type: ignore
             data_dict |= aux_dict  # type: ignore
 
         return data_dict
