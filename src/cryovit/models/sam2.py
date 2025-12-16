@@ -30,9 +30,9 @@ if GlobalHydra.instance().is_initialized():
 
 ## Pre-trained Model Weights ##
 sam2_model = (
-    "facebook/sam2.1-hiera-tiny",
-    {"config": "sam2.1_hiera_t.yaml", "weights": "sam2.1_hiera_tiny.pt"},
-)  # the tiny variant of SAMv2.1
+    "facebook/sam2.1-hiera-large",
+    {"config": "sam2.1_hiera_l.yaml", "weights": "sam2.1_hiera_large.pt"},
+)  # the large variant of SAMv2.1
 medical_sam2_model = (
     "wanglab/MedSAM2",
     {"config": "sam2.1_hiera_t.yaml", "weights": "MedSAM2_latest.pt"},
