@@ -24,5 +24,5 @@ sbatch \
     --cpus-per-task=8 \
     --mem-per-cpu=12gb \
     --gres=gpu:a100:1 \
-    --time=04:00:00 \
+    --time=24:00:00 \
     --wrap="$exp_cmd"

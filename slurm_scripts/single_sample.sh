@@ -7,7 +7,7 @@ if [ "$#" -ne 4 ]; then
 fi
 
 # Check for valid labels for the specified group
-if [ "$1" != "hd" ] && [ "$3" == "granule" -o "$3" == "dense_mito"]; then
+if [ "$1" != "hd" ] && [ "$3" == "granule" -o "$3" == "dense_mito" ]; then
     echo "Label keys granule and dense_mito are only valid for the hd group."
     exit 1
 fi
