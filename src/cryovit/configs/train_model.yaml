@@ -8,6 +8,7 @@ defaults:
   - paths: default
   - trainer: fit
   - model: ???
+  - optional trainer_model: ${model} # to load model-specific trainer configs
   - callbacks:
     - rich_progress_bar
     - stochastic_weight_average

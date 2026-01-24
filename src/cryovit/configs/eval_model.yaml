@@ -13,6 +13,7 @@ defaults:
   - paths: default
   - model: ???
   - trainer: eval
+  - optional trainer_model: ${model} # to load model-specific trainer configs
   - callbacks:
     - rich_progress_bar
     - test_pred_writer  # comment to speed up evaluation if not needed

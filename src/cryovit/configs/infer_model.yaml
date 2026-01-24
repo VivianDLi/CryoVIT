@@ -9,6 +9,7 @@ defaults:
   - paths: default
   - model: ???
   - trainer: eval
+  - optional trainer_model: ${model} # to load model-specific trainer configs
   - callbacks:
     - rich_progress_bar
   - datamodule: file
