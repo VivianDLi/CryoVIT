@@ -356,7 +356,7 @@ class SAM2Train(SAM2Base):
             return data.aux_data["sam_features"]
         try:
             return self.image_encoder(data.flat_tomo_batch)
-        except MemoryError:
+        except torch.OutOfMemoryError:
             logging.warning(
                 "MemoryError encountered in SAMv2 image encoder. Processing in smaller batches."
             )
