@@ -281,17 +281,4 @@ def validate_experiment_config(cfg: BaseExperimentConfig) -> None:
         logging.error("\n".join(error_msg))
         sys.exit(1)
 
-    # Add cached SAM2 features to additional keys if using SAM2 model
-    is_sam_model = (
-        cfg.model is not None and "sam" in cfg.model._target_.lower()
-    )
-    needs_sam_features = (
-        "sam_features" not in cfg.additional_keys
-        and cfg.model.custom_kwargs is not None
-        and "use_cache_features" in cfg.model.custom_kwargs
-        and cfg.model.custom_kwargs["use_cache_features"]
-    )
-    if is_sam_model and needs_sam_features:
-        cfg.additional_keys.append("sam_features")
-
     OmegaConf.set_struct(cfg, False)  # type: ignore

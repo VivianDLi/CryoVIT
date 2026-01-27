@@ -57,26 +57,6 @@ class TestPredictionWriter(Callback):
                 fh.create_dataset(self.label_key, data=labels, shape=labels.shape, dtype=labels.dtype, compression="gzip")  # type: ignore
                 fh.create_dataset(f"{self.label_key}_preds", data=preds, shape=preds.shape, dtype=preds.dtype, compression="gzip")  # type: ignore
 
-                if outputs.aux_data is not None:
-                    fh.create_group("aux_data")
-                    for key in outputs.aux_data:
-                        # convert floats to uint8 to save space
-                        if (
-                            outputs.aux_data[key].dtype == np.float32
-                            or outputs.aux_data[key].dtype == np.float64
-                        ):
-                            outputs.aux_data[key] = (
-                                outputs.aux_data[key]
-                                - outputs.aux_data[key].min()
-                            ) / (
-                                outputs.aux_data[key].max()
-                                - outputs.aux_data[key].min()
-                            )
-                            outputs.aux_data[key] = (
-                                outputs.aux_data[key] * 255.0
-                            ).astype(np.uint8)
-                        fh["aux_data"].create_dataset(key, data=outputs.aux_data[key], compression="gzip")  # type: ignore
-
 
 class PredictionWriter(BasePredictionWriter):
     """Callback to write predictions to disk during model prediction."""
