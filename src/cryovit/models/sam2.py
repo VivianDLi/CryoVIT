@@ -39,6 +39,7 @@ medical_sam2_model = (
 )  # fine-tuned on medical data SAMv2
 
 MAX_SAM_DEPTH = 255  # Temporary maximum depth (number of slices) for SAMv2 (due to implementation error in CUDA - https://github.com/pytorch/pytorch/issues/142228)
+MAX_BATCH_SIZE = 128  # Maximum batch size for SAMv2 image encoder if encountering memory issues
 # a large negative value as a placeholder score for missing objects
 NO_OBJ_SCORE = -1024.0
 
@@ -353,7 +354,31 @@ class SAM2Train(SAM2Base):
                 data.aux_data is not None and "sam_features" in data.aux_data
             ), "sam_features must be provided in aux_data to use cached features."
             return data.aux_data["sam_features"]
-        return self.image_encoder(data.flat_tomo_batch)
+        try:
+            return self.image_encoder(data.flat_tomo_batch)
+        except MemoryError:
+            logging.warning(
+                "MemoryError encountered in SAMv2 image encoder. Processing in smaller batches."
+            )
+            B = data.flat_tomo_batch.shape[0]
+            all_features = None
+            for start_idx in range(0, B, MAX_BATCH_SIZE):
+                end_idx = min(start_idx + MAX_BATCH_SIZE, B)
+                batch_features = self.image_encoder(
+                    data.flat_tomo_batch[start_idx:end_idx]
+                )
+                if all_features is None:
+                    all_features = {
+                        k: list(v) for k, v in batch_features.items()
+                    }
+                else:
+                    for k in all_features:
+                        for i in range(len(batch_features[k])):
+                            all_features[k][i] = torch.cat(
+                                [all_features[k][i], batch_features[k][i]],
+                                dim=0,
+                            )
+            return all_features
 
     def forward(self, data: BatchedTomogramData, box_prompts: Tensor, mask_prompts: Tensor) -> dict[str, Any] | Tensor:  # type: ignore
         """Forward pass for the SAMv2 model."""
