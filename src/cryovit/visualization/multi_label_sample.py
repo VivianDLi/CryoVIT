@@ -67,9 +67,9 @@ def _plot_df(
 
     k1, k2, k3 = df[key].unique()
     pairs = (
-        [[(s, k1), (s, k2)] for s in pvalues.index]
-        + [[(s, k1), (s, k3)] for s in pvalues.index]
-        + [[(s, k2), (s, k3)] for s in pvalues.index]
+        [[(s, k1), (s, k2)] for s in pvalues.index.unique()]
+        + [[(s, k1), (s, k3)] for s in pvalues.index.unique()]
+        + [[(s, k2), (s, k3)] for s in pvalues.index.unique()]
     )
 
     annotator = Annotator(ax, pairs, **params)
