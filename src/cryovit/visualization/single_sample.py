@@ -26,12 +26,13 @@ def _plot_df(
     from statannotations.Annotator import Annotator
 
     matplotlib.use("Agg")
-    colors = sns.color_palette("deep")[:2]
+    colors = sns.color_palette("deep")[:3]
     sns.set_theme(style="darkgrid", font="Open Sans")
 
     hue_palette = {
         "3D U-Net": colors[0],
         "CryoViT": colors[1],
+        "SAM2": colors[2],
     }
 
     sample_counts = df["sample"].value_counts()
@@ -63,8 +64,12 @@ def _plot_df(
         **params,
     )
 
-    k1, k2 = df[key].unique()
-    pairs = [[(s, k1), (s, k2)] for s in pvalues.index]
+    k1, k2, k3 = df[key].unique()
+    pairs = (
+        [[(s, k1), (s, k2)] for s in pvalues.index]
+        + [[(s, k1), (s, k3)] for s in pvalues.index]
+        + [[(s, k2), (s, k3)] for s in pvalues.index]
+    )
 
     annotator = Annotator(ax, pairs, **params)
     annotator.configure(color="blue", line_width=1, verbose=False)
@@ -85,7 +90,7 @@ def _plot_df(
 
     handles, labels = ax.get_legend_handles_labels()
     if title == "HD":
-        ax.legend(handles[:2], labels[:2], loc="lower center", shadow=True)
+        ax.legend(handles[:3], labels[:3], loc="lower center", shadow=True)
     else:
         ax.legend().remove()
     return handles, labels
@@ -127,25 +132,38 @@ def process_single_experiment(
     )
 
     for ax, (group, df) in zip(axes, dfs.items(), strict=True):
-        test_fn = functools.partial(
-            significance_test,
-            model_A=("CryoViT"),
-            model_B=("3D U-Net"),
-            key="model",
-            test_fn="wilcoxon",
-        )
-        p_values = compute_stats(
-            df,
-            group_keys=["sample", "model"],
-            file_name=str(
-                result_dir / f"{group.lower()}_{exp_type}_stats.csv"
-            ),
-            test_fn=test_fn,
-        )
+        total_ps = None
+        for m1, m2 in [
+            ("CryoViT", "3D U-Net"),
+            ("CryoViT", "SAM2"),
+            ("3D U-Net", "SAM2"),
+        ]:
+            test_fn = functools.partial(
+                significance_test,
+                model_A=m1,
+                model_B=m2,
+                key="model",
+                test_fn="wilcoxon",
+            )
+            p_values = compute_stats(
+                df,
+                group_keys=["sample", "model"],
+                file_name=str(
+                    result_dir
+                    / f"{group.lower()}_{exp_type}_{m1}_{m2}_stats.csv"
+                ),
+                test_fn=test_fn,
+            )
+            total_ps = (
+                p_values
+                if total_ps is None
+                else pd.concat([total_ps, p_values])
+            )
         title = f"{group}"
+        assert total_ps is not None
         _plot_df(
             df,
-            p_values,
+            total_ps,
             "model",
             title,
             ax,

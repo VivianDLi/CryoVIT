@@ -32,6 +32,7 @@ def _plot_df(
     hue_palette = {
         "3D U-Net": colors[0],
         "CryoViT": colors[1],
+        "SAM2": colors[2],
     }
 
     figsize = (20, 6) if "Mito" in title else (10, 6)
@@ -66,8 +67,12 @@ def _plot_df(
             **params,
         )
 
-        k1, k2 = df[key].unique()
-        pairs = [[(s, k1), (s, k2)] for s in pvalues.index]
+        k1, k2, k3 = df[key].unique()
+        pairs = (
+            [[(s, k1), (s, k2)] for s in pvalues.index]
+            + [[(s, k1), (s, k3)] for s in pvalues.index]
+            + [[(s, k2), (s, k3)] for s in pvalues.index]
+        )
 
         annotator = Annotator(ax, pairs, **params)
         annotator.configure(color="blue", line_width=1, verbose=False)
@@ -127,13 +132,6 @@ def process_fractional_experiment(
     """
 
     df = merge_experiments(exp_dir, exp_names, keys=["model"])
-    test_fn = functools.partial(
-        significance_test,
-        model_A=("CryoViT"),
-        model_B=("3D U-Net"),
-        key="model",
-        test_fn="ttest_rel",
-    )
     full_labels = {
         "mito": "Mitochondria",
         "cristae": "Cristae",
@@ -141,15 +139,36 @@ def process_fractional_experiment(
         "granule": "Granules",
         "bacteria": "Bacteria",
     }
-    p_values = compute_stats(
-        df,
-        group_keys=["split_id", "model"],
-        file_name=str(result_dir / f"{label}_{exp_type}_stats.csv"),
-        test_fn=test_fn,
-    )
+
+    total_ps = None
+    for m1, m2 in [
+        ("CryoViT", "3D U-Net"),
+        ("CryoViT", "SAM2"),
+        ("3D U-Net", "SAM2"),
+    ]:
+        test_fn = functools.partial(
+            significance_test,
+            model_A=m1,
+            model_B=m2,
+            key="model",
+            test_fn="ttest_rel",
+        )
+        p_values = compute_stats(
+            df,
+            group_keys=["split_id", "model"],
+            file_name=str(
+                result_dir / f"{label}_{exp_type}_{m1}_{m2}_stats.csv"
+            ),
+            test_fn=test_fn,
+        )
+        total_ps = (
+            p_values if total_ps is None else pd.concat([total_ps, p_values])
+        )
+    assert total_ps is not None
+
     _plot_df(
         df,
-        p_values,
+        total_ps,
         "model",
         f"Fractional Model Comparison for {full_labels[label]}",
         str(result_dir / f"{label}_{exp_type}_comparison"),

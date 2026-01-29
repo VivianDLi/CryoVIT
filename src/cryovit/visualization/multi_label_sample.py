@@ -14,7 +14,7 @@ from cryovit.visualization.utils import (
 
 def _plot_df(
     df: pd.DataFrame,
-    pvalues: dict[tuple[str, str], pd.Series],
+    pvalues: pd.Series,
     key: str,
     title: str,
     file_name: str,
@@ -65,11 +65,13 @@ def _plot_df(
         **params,
     )
 
-    pairs = []
-    values = []
-    for (model_A, model_B), ps in pvalues.items():
-        pairs += [[(s, model_A), (s, model_B)] for s in ps.index]
-        values += ps.values.tolist()
+    k1, k2, k3 = df[key].unique()
+    pairs = (
+        [[(s, k1), (s, k2)] for s in pvalues.index]
+        + [[(s, k1), (s, k3)] for s in pvalues.index]
+        + [[(s, k2), (s, k3)] for s in pvalues.index]
+    )
+
     annotator = Annotator(ax, pairs, **params)
     annotator.configure(color="blue", line_width=1, verbose=False)
     annotator.set_pvalues_and_annotate(pvalues.values)
@@ -125,38 +127,34 @@ def process_multi_label_experiment(
     result_dir.mkdir(parents=True, exist_ok=True)
     df = merge_experiments(exp_dir, exp_names, keys=["model", "label"])
     df = df[df["split_id"] == 10]  # Use data from 100% of training data
-    p_values = {}
-    for pairing in [
+
+    total_ps = None
+    for m1, m2 in [
         ("CryoViT", "3D U-Net"),
         ("CryoViT", "SAM2"),
         ("3D U-Net", "SAM2"),
     ]:
-        model_A, model_B = pairing
         test_fn = functools.partial(
             significance_test,
-            model_A=model_A,
-            model_B=model_B,
+            model_A=m1,
+            model_B=m2,
             key="model",
             test_fn="ttest_rel",
         )
-        for label in df["label"].unique():
-            sub_df = df[df["label"] == label]
-            print(
-                label,
-                len(sub_df[sub_df["model"] == "CryoViT"]),
-                len(sub_df[sub_df["model"] == "3D U-Net"]),
-                len(sub_df[sub_df["model"] == "SAM2"]),
-            )
-        p_values[pairing] = compute_stats(
+        p_values = compute_stats(
             df,
             group_keys=["label", "model"],
-            file_name=str(result_dir / f"{exp_type}_stats.csv"),
+            file_name=str(result_dir / f"{exp_type}_{m1}_{m2}_stats.csv"),
             test_fn=test_fn,
         )
+        total_ps = (
+            p_values if total_ps is None else pd.concat([total_ps, p_values])
+        )
+    assert total_ps is not None
 
     _plot_df(
         df,
-        p_values,
+        total_ps,
         "model",
         "Model Comparison on All Samples",
         str(result_dir / f"{exp_type}_comparison"),
