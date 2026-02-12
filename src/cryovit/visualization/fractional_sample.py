@@ -104,7 +104,7 @@ def _plot_df(
     fig.supylabel("Dice Score")
 
     handles, labels = ax.get_legend_handles_labels()
-    plt.legend(handles[:2], labels[:2], loc="lower center", shadow=True)
+    plt.legend(handles[:3], labels[:3], loc="lower center", shadow=True)
 
     plt.tight_layout(rect=(0.01, 0.01, 1.0, 1.0))
     plt.savefig(f"{file_name}{'_line' if not plot_points else ''}.svg")

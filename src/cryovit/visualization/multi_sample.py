@@ -97,7 +97,7 @@ def _plot_df(
     ax.set_xticklabels(new_labels, ha="center")
 
     handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles[:2], labels[:2], loc="lower right", shadow=True)
+    ax.legend(handles[:3], labels[:3], loc="lower right", shadow=True)
 
 
 def process_multi_experiment(

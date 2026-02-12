@@ -7,6 +7,7 @@ from cryovit.visualization import (
     process_fractional_experiment,
     process_multi_experiment,
     process_multi_label_experiment,
+    process_multi_label_sample_experiment,
     process_samples,
     process_single_experiment,
     process_sparse_experiment,
@@ -14,6 +15,16 @@ from cryovit.visualization import (
 
 setup_logging("INFO")
 import logging  # noqa: E402
+
+# Clean matplotlib font cache
+try:
+    import matplotlib
+
+    matplotlib.font_manager._rebuild()  # type: ignore
+except AttributeError:
+    import matplotlib.font_manager
+
+    matplotlib.font_manager._load_fontmanager(try_read_cache=False)  # type: ignore
 
 model_names = {
     "cryovit": "CryoViT",
@@ -52,11 +63,22 @@ experiment_names = {
         }
         for s_group in [
             ("hd", "healthy"),
-            ("old", "young"),
             ("neuron", "fibro_cancer"),
         ]
     },
     "multi_label": {
+        f"fractional_{m_key}_{s_group}": [m_value, s_group]
+        for m_key, m_value in model_names.items()
+        for s_group in [
+            "mito",
+            "cristae",
+            "microtubule",
+            "granule",
+            "bacteria",
+            "mito_membrane",
+        ]
+    },
+    "multi_label_sample": {
         f"fractional_{m_key}_{s_group}": [m_value, s_group]
         for m_key, m_value in model_names.items()
         for s_group in [
@@ -182,6 +204,13 @@ if __name__ == "__main__":
         case "multi_label":
             process_multi_label_experiment(
                 args.exp_type, exp_names, exp_dir, result_dir
+            )
+        case "multi_label_sample":
+            process_multi_label_sample_experiment(
+                args.exp_type,
+                exp_names,
+                exp_dir,
+                result_dir,
             )
         case "fractional":
             for label, names in exp_names.items():
